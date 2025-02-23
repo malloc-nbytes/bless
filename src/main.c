@@ -261,7 +261,45 @@ void handle_jump_to_bottom(const Matrix *const matrix, size_t *const line) {
     dump_matrix(matrix, *line, g_win_height);
 }
 
-void handle_search(Matrix *matrix, size_t *line, size_t start_row, char *jump_to_next/*optional*/) {
+// Returns the row in which the word was found.
+size_t find_word_in_matrix(Matrix *matrix, size_t start_row, char *word, size_t word_len, int reverse) {
+    size_t match = 0;
+    int found = 0;
+
+    if (!reverse) {
+        for (size_t i = start_row; i < matrix->rows && !found; ++i) {
+            for (size_t j = 0; j < matrix->cols && !found; ++j) {
+                if (MAT_AT(matrix->data, matrix->cols, i, j) == word[match]) {
+                    ++match;
+                    if (match == word_len) {
+                        found = i;
+                        break;
+                    }
+                } else {
+                    match = 0;
+                }
+            }
+        }
+    } else {
+        for (size_t i = start_row + 1; i-- > 0 && !found; ) {
+            for (size_t j = 0; j < matrix->cols && !found; ++j) {
+                if (MAT_AT(matrix->data, matrix->cols, i, j) == word[match]) {
+                    ++match;
+                    if (match == word_len) {
+                        found = i;
+                        break;
+                    }
+                } else {
+                    match = 0;
+                }
+            }
+        }
+    }
+
+    return found ? found - 1 : 0;
+}
+
+void handle_search(Matrix *matrix, size_t *line, size_t start_row, char *jump_to_next/*optional*/, int reverse) {
     char *actual = NULL;
     size_t actual_len = 0;
 
@@ -275,26 +313,18 @@ void handle_search(Matrix *matrix, size_t *line, size_t start_row, char *jump_to
         actual_len = strlen(actual);
     }
 
-    size_t match = 0;
-    int found = 0;
-
-    for (size_t i = start_row; i < matrix->rows && !found; ++i) {
-        for (size_t j = 0; j < matrix->cols && !found; ++j) {
-            if (MAT_AT(matrix->data, matrix->cols, i, j) == actual[match]) {
-                ++match;
-                if (match == actual_len) {
-                    found = i;
-                    break;
-                }
-            } else {
-                match = 0;
-            }
-        }
-    }
+    size_t found = find_word_in_matrix(matrix, start_row, actual, actual_len, reverse);
 
     if (found) {
-        *line = found-1;
+        *line = found;
         dump_matrix(matrix, *line, g_win_height);
+    }
+    else {
+        reset_scrn();
+        dump_matrix(matrix, *line, g_win_height);
+        color(RED BOLD);
+        out("--- SEARCH NOT FOUND ---", 1);
+        color(RESET);
     }
 
     if (!jump_to_next) {
@@ -304,15 +334,18 @@ void handle_search(Matrix *matrix, size_t *line, size_t start_row, char *jump_to
     }
 }
 
-void jump_to_last_searched_word(Matrix *matrix, size_t *line) {
+void jump_to_last_searched_word(Matrix *matrix, size_t *line, int reverse) {
     if (!g_last_search) {
         color(RED BOLD);
         out("--- NO PREVIOUS SEARCH ---", 1);
         color(RESET);
         return;
     }
-    *line += 2;
-    handle_search(matrix, line, *line, g_last_search);
+    if (!reverse) {
+        handle_search(matrix, line, *line+2, g_last_search, 0);
+    } else {
+        handle_search(matrix, line, *line, g_last_search, 1);
+    }
 }
 
 int main(int argc, char **argv) {
@@ -358,9 +391,11 @@ int main(int argc, char **argv) {
         } else if (c == 'G') {
             handle_jump_to_bottom(&matrix, &line);
         } else if (c == '/') {
-            handle_search(&matrix, &line, line, NULL);
+            handle_search(&matrix, &line, line, NULL, 0);
         } else if (c == 'N') {
-            jump_to_last_searched_word(&matrix, &line);
+            jump_to_last_searched_word(&matrix, &line, 0);
+        } else if (c == 'P') {
+            jump_to_last_searched_word(&matrix, &line, 1);
         } else if (c == 'q') {
             reset_scrn();
             break;
