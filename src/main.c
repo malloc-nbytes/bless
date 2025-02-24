@@ -625,6 +625,29 @@ void handle_1hy_flag(const char *arg, int *argc, char ***argv) {
     }
 }
 
+void display_tabs(const Matrix *const matrix,
+                  char **paths,
+                  size_t paths_len,
+                  size_t *last_viewed_lines,
+                  size_t line) {
+    color(BOLD UNDERLINE);
+    printf("[");
+    for (size_t i = 0; i < paths_len; ++i) {
+        if (!strcmp(paths[i], matrix->filepath)) {
+            color(GREEN);
+            printf(" %s:%zu ", paths[i], line);
+        }
+        else {
+            color(RESET BOLD UNDERLINE);
+            printf(" %s:%zu ", paths[i], last_viewed_lines[i]);
+        }
+    }
+    printf("]");
+    color(RESET);
+    fflush(stdout);
+
+}
+
 int main(int argc, char **argv) {
     if (argc <= 1)
         help();
@@ -688,10 +711,7 @@ int main(int argc, char **argv) {
         reset_scrn();
         dump_matrix(matrix, line, g_win_height);
 
-        color(BOLD UNDERLINE GREEN);
-        printf("File: %s:%d", matrix->filepath, line+1);
-        color(RESET);
-        fflush(stdout);
+        display_tabs(matrix, paths.actual, paths.len, buffers.last_viewed_lines, line);
 
         while (1) {
             char c;
@@ -732,10 +752,12 @@ int main(int argc, char **argv) {
                 else if (c == 'N') jump_to_last_searched_word(matrix, &line, 1);
                 else if (c == 'q') goto delete_buffer;
                 else if (c == '?') {
-                    Matrix usage_matrix = init_matrix(g_usage, "internal-usage");
+                    char *iu_fp = "internal-usage";
+                    Matrix usage_matrix = init_matrix(g_usage, iu_fp);
                     buffers.matrices[buffers.len] = usage_matrix;
                     buffers.last_viewed_lines[buffers.len++] = 0;
                     b_idx = buffers.len-1;
+                    paths.actual[paths.len++] = iu_fp;
                     goto switch_buffer;
                 }
                 else if (c == 'Q') {
@@ -757,10 +779,7 @@ int main(int argc, char **argv) {
             default: {} break;
             }
 
-            color(BOLD UNDERLINE GREEN);
-            printf("File: %s:%d", matrix->filepath, line+1);
-            color(RESET);
-            fflush(stdout);
+            display_tabs(matrix, paths.actual, paths.len, buffers.last_viewed_lines, line);
         }
 
     delete_buffer:
@@ -769,8 +788,10 @@ int main(int argc, char **argv) {
         for (size_t j = b_idx; j < buffers.len - 1; ++j) {
             buffers.matrices[j] = buffers.matrices[j + 1];
             buffers.last_viewed_lines[j] = buffers.last_viewed_lines[j + 1];
+            paths.actual[j] = paths.actual[j+1];
         }
 
+        --paths.len;
         --buffers.len;
 
         if (b_idx >= buffers.len && buffers.len > 0)
