@@ -273,15 +273,24 @@ Matrix init_matrix(const char *src) {
     memset(matrix.data, ' ', rows * cols);
 
     size_t row = 0, col = 0;
+    char buf[1024] = {0};
+    size_t buf_len = 0;
     for (size_t i = 0; src[i]; ++i) {
         if (src[i] == '\n') {
+            if (g_filter_pattern && !regex(g_filter_pattern, buf))
+                goto not_match;
+            for (size_t j = 0; j < buf_len; ++j)
+                matrix.data[row * cols + j] = buf[j];
             row++;
-            col = 0;
-        } else {
-            matrix.data[row * cols + col] = src[i];
-            col++;
+        not_match:
+            memset(buf, '\0', 1024);
+            buf_len = 0;
         }
+        else
+            buf[buf_len++] = src[i];
     }
+
+    matrix.rows = row;
 
     return matrix;
 }
@@ -341,6 +350,9 @@ void help(void) {
 }
 
 void dump_matrix(const Matrix *const matrix, size_t start_row, size_t end_row) {
+    if (end_row > matrix->rows)
+        end_row = matrix->rows;
+
     for (size_t i = start_row; i < end_row + start_row; ++i) {
         if (BIT_SET(g_flags, FLAG_TYPE_LINES))
             printf("%zu: ", i);
