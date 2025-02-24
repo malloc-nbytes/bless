@@ -128,6 +128,7 @@ static char *g_usage = "Bless internal usage buffer:\n\n"
     "    d           Quit buffer\n"
     "    Q           Quit all buffers\n"
     "    D           Quit all buffers\n"
+    "    C-w         Save a buffer\n"
     "    [UP]        Scroll up\n"
     "    [DOWN]      Scroll down\n"
     "    [LEFT]      Left buffer\n"
@@ -441,7 +442,14 @@ char *get_user_input_in_mini_buffer(char *prompt, char *last_input) {
 }
 
 void help(void) {
-    printf("Usage: bless <filepath>\n");
+    printf("(MIT License) Copyright (c) 2025 malloc-nbytes\n\n");
+
+    printf("Usage: bless [filepath...] [options...]\n");
+    printf("Options:\n");
+    printf("  %s,   -%c    Print this message\n", FLAG_2HY_HELP, FLAG_1HY_HELP);
+    printf("  %s,   -%c    Just print the files out the files\n", FLAG_2HY_ONCE, FLAG_1HY_ONCE);
+    printf("  %s,  -%c    Show line numbers\n", FLAG_2HY_LINES, FLAG_1HY_LINES);
+    printf("  %s, -%c    Filter using regex\n", FLAG_2HY_FILTER, FLAG_1HY_FILTER);
     exit(EXIT_FAILURE);
 }
 
