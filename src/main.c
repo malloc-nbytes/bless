@@ -48,6 +48,8 @@
 #define CTRL_G 7  // Cancel
 #define CTRL_V 22 // Scroll down
 #define CTRL_W 23 // Save buffer
+#define CTRL_O 15 // Open buffer
+
 #define UP_ARROW      'A'
 #define DOWN_ARROW    'B'
 #define RIGHT_ARROW   'C'
@@ -129,6 +131,7 @@ static char *g_usage = "Bless internal usage buffer:\n\n"
     "    Q           Quit all buffers\n"
     "    D           Quit all buffers\n"
     "    C-w         Save a buffer\n"
+    "    C-o         Open a saved buffer\n"
     "    [UP]        Scroll up\n"
     "    [DOWN]      Scroll down\n"
     "    [LEFT]      Left buffer\n"
@@ -160,7 +163,7 @@ typedef enum {
 typedef struct {
     char *data;
     size_t rows, cols;
-    const char *filepath;
+    char *filepath;
 } Matrix;
 
 void init_config_file(void) {
@@ -257,6 +260,7 @@ User_Input_Type get_user_input(char *c) {
         else if (*c == CTRL_U) return USER_INPUT_TYPE_CTRL;
         else if (*c == CTRL_V) return USER_INPUT_TYPE_CTRL;
         else if (*c == CTRL_W) return USER_INPUT_TYPE_CTRL;
+        else if (*c == CTRL_O) return USER_INPUT_TYPE_CTRL;
         else return USER_INPUT_TYPE_NORMAL;
     }
     return USER_INPUT_TYPE_UNKNOWN;
@@ -305,7 +309,7 @@ const char *file_to_cstr(const char *filename) {
     return buffer;
 }
 
-Matrix init_matrix(const char *src, const char *filepath) {
+Matrix init_matrix(const char *src, char *filepath) {
     size_t rows = 1, cols = 0, current_cols = 0;
 
     for (size_t i = 0; src[i]; ++i) {
@@ -371,6 +375,58 @@ void clear_msg(void) {
     out("\r\033[K", 0);
 }
 
+// Caller must free()
+void parse_config_file(char ***paths,
+                       size_t **lines,
+                       char ***names,
+                       size_t *info_len) {
+    const char *home = getenv("HOME");
+    if (!home) {
+        fprintf(stderr, "[Warning]: HOME environment variable not set.\n");
+        return;
+    }
+
+    char bless[512];
+    snprintf(bless, sizeof(bless), "%s/.bless", home);
+
+    FILE *file = fopen(bless, "rb");
+    if (!file) {
+        perror("Error opening file");
+        return;
+    }
+
+    char line[512];
+
+    while (fgets(line, sizeof(line), file)) {
+        size_t len = strlen(line);
+        if (len > 0 && line[len - 1] == '\n') {
+            line[len - 1] = '\0';  // Remove newline
+        }
+
+        char *path = NULL;
+        char *line_str = NULL;
+        char *name = NULL;
+
+        path = strtok(line, ":");  // First part: file path
+        line_str = strtok(NULL, ":");  // Second part: line number
+        name = strtok(NULL, ":");  // Third part: name
+
+        if (path && line_str && name) {
+            *paths = realloc(*paths, sizeof(char*) * (*info_len + 1));
+            *names = realloc(*names, sizeof(char*) * (*info_len + 1));
+            *lines = realloc(*lines, sizeof(size_t) * (*info_len + 1));
+
+            (*paths)[*info_len] = strdup(path);
+            (*names)[*info_len] = strdup(name);
+            (*lines)[*info_len] = (size_t)atoi(line_str);
+
+            (*info_len)++;
+        }
+    }
+
+    fclose(file);
+}
+
 char *get_user_input_in_mini_buffer(char *prompt, char *last_input) {
     assert(prompt);
 
@@ -381,7 +437,6 @@ char *get_user_input_in_mini_buffer(char *prompt, char *last_input) {
         putchar(prompt[i]);
     }
     color(RESET);
-
 
     const size_t
         input_lim = 256,
@@ -616,13 +671,20 @@ void save_buffer(Matrix *matrix, size_t line) {
     char *name = get_user_input_in_mini_buffer("Save as: ", NULL);
     if (!name) return;
 
-    char cwd[PATH_MAX];
-    if (getcwd(cwd, sizeof(cwd)) == NULL) {
-        perror("Error getting current directory");
-        return;
-    }
+    // Check if filepath is absolute or relative
     char fullpath[PATH_MAX];
-    snprintf(fullpath, sizeof(fullpath), "%s/%s", cwd, matrix->filepath);
+    if (matrix->filepath[0] == '/') {
+        // Absolute path
+        snprintf(fullpath, sizeof(fullpath), "%s", matrix->filepath);
+    } else {
+        // Relative path
+        char cwd[PATH_MAX];
+        if (getcwd(cwd, sizeof(cwd)) == NULL) {
+            perror("Error getting current directory");
+            return;
+        }
+        snprintf(fullpath, sizeof(fullpath), "%s/%s", cwd, matrix->filepath);
+    }
 
     const char *home = getenv("HOME");
     if (!home) {
@@ -722,6 +784,45 @@ void display_tabs(const Matrix *const matrix,
 
 }
 
+int open_saved_buffer(Matrix *matrix, size_t *last_off_line) {
+    reset_scrn();
+
+    color(BOLD UNDERLINE);
+    printf("=== Saved Buffers ===\n");
+    color(RESET BOLD);
+    printf("Use C-g to cancel\n\n");
+    color(RESET);
+
+    char **info_paths = malloc(sizeof(char *) * 10);
+    size_t *info_lines = malloc(sizeof(size_t) * 10);
+    char **info_names = malloc(sizeof(char *) * 10);
+    size_t info_len = 0;
+
+    parse_config_file(&info_paths, &info_lines, &info_names, &info_len);
+
+    for (size_t i = 0; i < info_len; ++i) {
+        const char *path = info_paths[i];
+        const size_t line = info_lines[i];
+        const char *name = info_names[i];
+
+        color(GREEN BOLD);
+        printf("[%zu]: [%s] path: %s, line: %zu\n", i, name, path, line);
+        color(RESET);
+    }
+    putchar('\n');
+
+    char *input = get_user_input_in_mini_buffer("Enter Index: ", NULL);
+
+    if (!input) return 0;
+
+    int idx = atoi(input);
+
+    *matrix = init_matrix(file_to_cstr(info_paths[idx]), info_paths[idx]);
+    *last_off_line = info_lines[idx];
+
+    return 1;
+}
+
 int main(int argc, char **argv) {
     init_config_file();
 
@@ -803,6 +904,17 @@ int main(int argc, char **argv) {
                 else if (c == CTRL_V) handle_page_down(matrix, &line);
                 else if (c == CTRL_U) handle_page_up(matrix, &line);
                 else if (c == CTRL_W) save_buffer(matrix, line);
+                else if (c == CTRL_O) {
+                    size_t left_off_line = 0;
+                    Matrix new_matrix = {0};
+                    if (!open_saved_buffer(&new_matrix, &left_off_line))
+                        goto switch_buffer;
+                    buffers.matrices[buffers.len] = new_matrix;
+                    buffers.last_viewed_lines[buffers.len++] = left_off_line;
+                    b_idx = buffers.len-1;
+                    paths.actual[paths.len++] = new_matrix.filepath;
+                    goto switch_buffer;
+                }
             } break;
             case USER_INPUT_TYPE_ALT: {
                 if (c == 'v') handle_page_up(matrix, &line);
