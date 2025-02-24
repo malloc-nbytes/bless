@@ -59,6 +59,8 @@
 #define FLAG_2HY_LINES  "--lines"
 #define FLAG_2HY_FILTER "--filter"
 
+#define BUFFERS_LIM 256
+
 #define ENTER(ch)     (ch) == '\n'
 #define BACKSPACE(ch) (ch) == 8 || (ch) == 127
 #define ESCSEQ(ch)    (ch) == 27
@@ -454,7 +456,7 @@ void handle_search(Matrix *matrix, size_t *line, size_t start_row, char *jump_to
     size_t found = find_word_in_matrix(matrix, start_row, actual, actual_len, reverse);
 
     if (found) {
-        *line = found;
+        *line = found+1;
         dump_matrix(matrix, *line, g_win_height);
     }
     else {
@@ -481,11 +483,10 @@ void jump_to_last_searched_word(Matrix *matrix, size_t *line, int reverse) {
         color(RESET);
         return;
     }
-    if (!reverse) {
-        handle_search(matrix, line, *line+2, g_last_search, 0);
-    } else {
-        handle_search(matrix, line, *line, g_last_search, 1);
-    }
+    if (!reverse)
+        handle_search(matrix, line, *line+1, g_last_search, 0);
+    else
+        handle_search(matrix, line, *line-1, g_last_search, 1);
 }
 
 void handle_page_up(Matrix *matrix, size_t *line) {
@@ -589,20 +590,10 @@ int main(int argc, char **argv) {
     init_term();
 
     struct {
-        Matrix *matrices;
-        size_t len, cap;
-        struct {
-            size_t *lines;
-            size_t len;
-            size_t cap;
-        } last_viewed_lines;
-    } buffers = {0};
-    {
-        buffers.matrices = s_malloc(sizeof(Matrix));
-        buffers.len = 0, buffers.cap = 1;
-        buffers.last_viewed_lines.lines = s_malloc(sizeof(size_t));
-        buffers.last_viewed_lines.len = 0, buffers.last_viewed_lines.cap = 1;
-    };
+        Matrix matrices[BUFFERS_LIM];
+        size_t len;
+        size_t last_viewed_lines[BUFFERS_LIM];
+    } buffers = {0}; { buffers.len = 0; }
 
     for (size_t i = 0; i < paths.len; ++i) {
         const char *fp = paths.actual[i];
@@ -613,12 +604,12 @@ int main(int argc, char **argv) {
             exit(EXIT_FAILURE);
         }
 
+        if (buffers.len >= BUFFERS_LIM)
+            err_wargs("Only %d files are supported", BUFFERS_LIM);
+
         Matrix matrix = init_matrix(src);
-        da_append(buffers.matrices, buffers.len, buffers.cap, Matrix *, matrix);
-        da_append(buffers.last_viewed_lines.lines,
-                  buffers.last_viewed_lines.len,
-                  buffers.last_viewed_lines.cap,
-                  size_t *, 0);
+        buffers.matrices[buffers.len] = matrix;
+        buffers.last_viewed_lines[buffers.len++] = 0;
     }
 
     int b_idx = 0;
@@ -630,7 +621,7 @@ int main(int argc, char **argv) {
             continue;
         }
 
-        size_t line = buffers.last_viewed_lines.lines[b_idx];
+        size_t line = buffers.last_viewed_lines[b_idx];
         reset_scrn();
         dump_matrix(matrix, line, g_win_height);
 
@@ -651,13 +642,11 @@ int main(int argc, char **argv) {
                 if (c == UP_ARROW)        handle_scroll_up(matrix, &line);
                 else if (c == DOWN_ARROW) handle_scroll_down(matrix, &line);
                 else if (c == RIGHT_ARROW && b_idx < buffers.len-1) {
-                    buffers.last_viewed_lines.lines[b_idx] = line;
-                    b_idx++;
+                    buffers.last_viewed_lines[b_idx++] = line;
                     goto switch_buffer;
                 }
                 else if (c == LEFT_ARROW && b_idx > 0) {
-                    buffers.last_viewed_lines.lines[b_idx] = line;
-                    b_idx--;
+                    buffers.last_viewed_lines[b_idx--] = line;
                     goto switch_buffer;
                 }
             } break;
@@ -675,6 +664,14 @@ int main(int argc, char **argv) {
                     free(matrix->data);
                     goto end;
                 }
+                else if (c == 'l' && b_idx < buffers.len-1) {
+                    buffers.last_viewed_lines[b_idx++] = line;
+                    goto switch_buffer;
+                }
+                else if (c == 'h' && b_idx > 0) {
+                    buffers.last_viewed_lines[b_idx--] = line;
+                    goto switch_buffer;
+                }
                 else redraw_matrix(matrix, line);
             } break;
             case USER_INPUT_TYPE_UNKNOWN: {} break;
@@ -682,6 +679,7 @@ int main(int argc, char **argv) {
             }
 
         }
+
     switch_buffer:
         (void)0x0;
     }
