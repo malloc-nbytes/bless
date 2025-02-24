@@ -5,7 +5,7 @@ some of the GNU coreutils. It aims to be the exact same as `less` except
 with some quality of life features.
 
 `Bless` can take any number of files (even none) and will open them as
-separate buffers. Scroll, tab through them, search, and more. You can
+separate buffers. You can scroll, tab through them, search, and more. You can
 even save buffers as well as the line number for later use.
 
 If no files are given, or if you type `?`, it will open the internal
