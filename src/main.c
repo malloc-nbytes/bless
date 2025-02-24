@@ -5,6 +5,7 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 #include <termios.h>
+#include <stdint.h>
 
 // Fourground Colors
 #define YELLOW        "\033[93m"
@@ -35,21 +36,41 @@
 // Reset
 #define RESET "\033[0m"
 
-#define ENTER(ch)     (ch) == '\n'
-#define BACKSPACE(ch) (ch) == 8 || (ch) == 127
-#define ESCSEQ(ch)    (ch) == 27
-#define CSI(ch)       (ch) == '['
-#define TAB(ch)       (ch) == '\t'
+#define CTRL_N 14 // Scroll down
+#define CTRL_D 4  // Page down
+#define CTRL_U 21 // Page up
+#define CTRL_L 12 // Refresh
+#define CTRL_P 16 // Scroll up
+#define CTRL_G 7  // Cancel
+#define CTRL_V 22 // Scroll down
 #define UP_ARROW      'A'
 #define DOWN_ARROW    'B'
 #define RIGHT_ARROW   'C'
 #define LEFT_ARROW    'D'
 
-#define CTRL_N 0x0E // Scroll down
-#define CTRL_D 0x04 // Page down
-#define CTRL_L 0x0C // Refresh
-#define CTRL_P 0x10 // Scroll up
-#define CTRL_G 0x07 // Cancel
+#define FLAG_1HY_HELP 'h'
+#define FLAG_1HY_ONCE 'o'
+
+#define FLAG_2HY_HELP "--help"
+#define FLAG_2HY_ONCE "--once"
+
+#define ENTER(ch)     (ch) == '\n'
+#define BACKSPACE(ch) (ch) == 8 || (ch) == 127
+#define ESCSEQ(ch)    (ch) == 27
+#define CSI(ch)       (ch) == '['
+#define TAB(ch)       (ch) == '\t'
+
+#define err(msg)                                \
+    do {                                        \
+        fprintf(stderr, "[Error]: " msg "\n");  \
+        exit(1);                                \
+    } while (0)
+
+#define err_wargs(msg, ...)                                     \
+    do {                                                        \
+        fprintf(stderr, "[Error]: " msg "\n", __VA_ARGS__);     \
+        exit(1);                                                \
+    } while (0)
 
 #define da_append(arr, len, cap, ty, value)                       \
     do {                                                          \
@@ -61,6 +82,10 @@
         (len) += 1;                                               \
     } while (0)
 
+#define BIT_SET(bits, bit) ((bits) & (bit)) != 0
+
+#define SAFE_PEEK(arr, i, el) ((arr)[i] && (arr)[i] == el)
+
 #define MAT_AT(m, c, i, j) \
     ((m)[(i) * (c) + (j)])
 
@@ -71,6 +96,12 @@ static int g_win_width = DEF_WIN_WIDTH;
 static int g_win_height = DEF_WIN_HEIGHT;
 static struct termios g_old_termios;
 static char *g_last_search = NULL;
+static uint32_t g_flags = 0x0;
+
+typedef enum {
+    FLAG_TYPE_HELP,
+    FLAG_TYPE_ONCE,
+} Flag_Type;
 
 typedef enum {
     USER_INPUT_TYPE_CTRL,
@@ -89,6 +120,12 @@ typedef struct {
     char *data;
     size_t len, cap;
 } Dyn_Str;
+
+void *s_malloc(size_t b) {
+    void *p = malloc(b);
+    if (!p) err_wargs("could not allocate %zu bytes", b);
+    return p;
+}
 
 void out(const char *msg, int newline) {
     printf("%s", msg);
@@ -124,12 +161,15 @@ User_Input_Type get_user_input(char *c) {
                     return USER_INPUT_TYPE_UNKNOWN;
                 }
             } else { // [ALT] key
-                assert(0 && "[alt] unimplemented");
+                return USER_INPUT_TYPE_ALT;
             }
         }
         else if (*c == CTRL_N) return USER_INPUT_TYPE_CTRL;
         else if (*c == CTRL_P) return USER_INPUT_TYPE_CTRL;
         else if (*c == CTRL_G) return USER_INPUT_TYPE_CTRL;
+        else if (*c == CTRL_D) return USER_INPUT_TYPE_CTRL;
+        else if (*c == CTRL_U) return USER_INPUT_TYPE_CTRL;
+        else if (*c == CTRL_V) return USER_INPUT_TYPE_CTRL;
         else return USER_INPUT_TYPE_NORMAL;
     }
     return USER_INPUT_TYPE_UNKNOWN;
@@ -163,7 +203,7 @@ const char *file_to_cstr(const char *filename) {
     long length = ftell(file);
     rewind(file);
 
-    char *buffer = malloc(length + 1);
+    char *buffer = (char *)s_malloc(length + 1);
     if (!buffer) {
         perror("Failed to allocate memory");
         fclose(file);
@@ -194,7 +234,7 @@ Matrix init_matrix(const char *src) {
     if (current_cols > cols) cols = current_cols;
 
     Matrix matrix = {
-        .data = malloc(rows * cols * sizeof(char)),
+        .data = (char *)s_malloc(rows * cols * sizeof(char)),
         .rows = rows,
         .cols = cols
     };
@@ -225,7 +265,7 @@ Dyn_Str get_user_input_in_mini_buffer(char *prompt, char *last_input) {
     out(prompt, 0);
 
     Dyn_Str input = (Dyn_Str) {
-        .data = malloc(1),
+        .data = (char *)s_malloc(1),
         .len = 0,
         .cap = 1,
     };
@@ -237,25 +277,38 @@ Dyn_Str get_user_input_in_mini_buffer(char *prompt, char *last_input) {
     }
 
     while (1) {
-        char c = get_char();
-        if (ENTER(c))
-            break;
-        if (BACKSPACE(c)) {
-            out("\b \b", 0);
-            input.data[input.len--] = '\0';
-        } else {
-            da_append(input.data, input.len, input.cap, char *, c);
+        char c;
+        User_Input_Type ty = get_user_input(&c);
+        switch (ty) {
+        case USER_INPUT_TYPE_CTRL: {
+            if (c == CTRL_G)
+                assert(0);
+        } break;
+        case USER_INPUT_TYPE_ALT:   break;
+        case USER_INPUT_TYPE_ARROW: break;
+        case USER_INPUT_TYPE_NORMAL: {
+            if (ENTER(c)) goto ok;
+            if (BACKSPACE(c)) {
+                out("\b \b", 0);
+                input.data[input.len--] = '\0';
+            }
+            else
+                da_append(input.data, input.len, input.cap, char *, c);
+        } break;
+        case USER_INPUT_TYPE_UNKNOWN: break;
+        default: break;
         }
         putchar(c);
         fflush(stdout);
     }
 
+ ok:
     out("\r\033[K", 1);
     return input;
 }
 
 void help(void) {
-    printf("Usage: fp <filepath>\n");
+    printf("Usage: bless <filepath>\n");
     exit(EXIT_FAILURE);
 }
 
@@ -360,7 +413,7 @@ void handle_search(Matrix *matrix, size_t *line, size_t start_row, char *jump_to
     else {
         reset_scrn();
         dump_matrix(matrix, *line, g_win_height-1);
-        color(RED BOLD);
+        color(RED BOLD UNDERLINE);
         out("--- SEARCH NOT FOUND ---", 1);
         color(RESET);
     }
@@ -376,7 +429,7 @@ void jump_to_last_searched_word(Matrix *matrix, size_t *line, int reverse) {
     if (!g_last_search) {
         reset_scrn();
         dump_matrix(matrix, *line, g_win_height-1);
-        color(RED BOLD);
+        color(RED BOLD UNDERLINE);
         out("--- NO PREVIOUS SEARCH ---", 1);
         color(RESET);
         return;
@@ -388,68 +441,149 @@ void jump_to_last_searched_word(Matrix *matrix, size_t *line, int reverse) {
     }
 }
 
+void handle_page_up(Matrix *matrix, size_t *line) {
+    if (*line > 0) {
+        if (*line < g_win_height / 2)
+            *line = 0;
+        else
+            *line -= g_win_height / 2;
+        dump_matrix(matrix, *line, g_win_height);
+    }
+}
+
+void handle_page_down(Matrix *matrix, size_t *line) {
+    size_t max_start = matrix->rows > g_win_height
+        ? matrix->rows - g_win_height
+        : 0;
+
+    if (*line < max_start) {
+        *line += g_win_height / 2;
+        if (*line > max_start)
+            *line = max_start;
+        dump_matrix(matrix, *line, g_win_height);
+    }
+}
+
 void redraw_matrix(Matrix *matrix, size_t line) {
     reset_scrn();
     dump_matrix(matrix, line, g_win_height);
 }
 
+char *eat(int *argc, char ***argv) {
+    if (!(*argc))
+        return NULL;
+    (*argc)--;
+    return *(*argv)++;
+}
+
+void handle_2hy_flag(const char *arg, int *argc, char ***argv) {
+    if (!strcmp(arg, FLAG_2HY_HELP))
+        help();
+    else if (!strcmp(arg, FLAG_2HY_ONCE))
+        g_flags |= FLAG_TYPE_ONCE;
+    else
+        err_wargs("Unknown option: `%s`", arg);
+}
+
+void handle_1hy_flag(const char *arg, int *argc, char ***argv) {
+    const char *it = arg+1;
+    while (it && *it != ' ' && *it != '\0') {
+        if (*it == FLAG_1HY_HELP)
+            help();
+        else if (*it == FLAG_1HY_ONCE)
+            g_flags |= FLAG_TYPE_ONCE;
+        else
+            err_wargs("Unknown option: `%c`", *it);
+    }
+}
+
 int main(int argc, char **argv) {
-    if (argc <= 1 || argc > 2)
+    if (argc <= 1)
         help();
     ++argv, --argc;
+
+    struct {
+        char **actual;
+        size_t len, cap;
+    } paths = {0}; {
+        paths.actual = (char **)s_malloc(sizeof(char *));
+        paths.len = 0, paths.cap = 1;
+    };
+
+    char *arg = NULL;
+    while ((arg = eat(&argc, &argv)) != NULL) {
+        if (arg[0] == '-' && SAFE_PEEK(arg, 1, '-'))
+            handle_2hy_flag(arg, &argc, &argv);
+        else if (arg[0] == '-' && arg[1])
+            handle_1hy_flag(arg, &argc, &argv);
+        else
+            da_append(paths.actual, paths.len, paths.cap, char **, arg);
+    }
 
     atexit(cleanup);
     init_term();
 
-    const char *fp = *argv;
-    const char *src = file_to_cstr(fp);
+    for (size_t i = 0; i < paths.len; ++i) {
+        const char *fp = paths.actual[i];
+        const char *src = file_to_cstr(fp);
 
-    if (!src) {
-        perror("src is NULL");
-        exit(EXIT_FAILURE);
-    }
-
-    Matrix matrix = init_matrix(src);
-    dump_matrix(&matrix, 0, g_win_height);
-
-    size_t line = 0;
-
-    while (1) {
-        char c;
-        User_Input_Type ty = get_user_input(&c);
-        switch (ty) {
-        case USER_INPUT_TYPE_CTRL: {
-            if (c == CTRL_N)
-                handle_scroll_down(&matrix, &line);
-            else if (c == CTRL_P)
-                handle_scroll_up(&matrix, &line);
-        } break;
-        case USER_INPUT_TYPE_ALT: {} break;
-        case USER_INPUT_TYPE_ARROW: {
-            if (c == UP_ARROW)
-                handle_scroll_up(&matrix, &line);
-            else if (c == DOWN_ARROW)
-                handle_scroll_down(&matrix, &line);
-        } break;
-        case USER_INPUT_TYPE_NORMAL: {
-            if (c == 'k')      handle_scroll_up(&matrix, &line);
-            else if (c == 'j') handle_scroll_down(&matrix, &line);
-            else if (c == 'g') handle_jump_to_top(&matrix, &line);
-            else if (c == 'G') handle_jump_to_bottom(&matrix, &line);
-            else if (c == '/') handle_search(&matrix, &line, line, NULL, 0);
-            else if (c == 'n') jump_to_last_searched_word(&matrix, &line, 0);
-            else if (c == 'p') jump_to_last_searched_word(&matrix, &line, 1);
-            else if (c == 'q') goto done;
-            else redraw_matrix(&matrix, line);
-        } break;
-        case USER_INPUT_TYPE_UNKNOWN: {} break;
-        default: {} break;
+        if (!src) {
+            perror("src is NULL");
+            exit(EXIT_FAILURE);
         }
+
+        Matrix matrix = init_matrix(src);
+
+        if (BIT_SET(g_flags, FLAG_TYPE_ONCE)) {
+            dump_matrix(&matrix, 0, matrix.rows);
+            continue;
+        }
+
+        dump_matrix(&matrix, 0, g_win_height);
+
+        size_t line = 0;
+        while (1) {
+            char c;
+            User_Input_Type ty = get_user_input(&c);
+            switch (ty) {
+            case USER_INPUT_TYPE_CTRL: {
+                if (c == CTRL_N)      handle_scroll_down(&matrix, &line);
+                else if (c == CTRL_P) handle_scroll_up(&matrix, &line);
+                else if (c == CTRL_D) handle_page_down(&matrix, &line);
+                else if (c == CTRL_V) handle_page_down(&matrix, &line);
+                else if (c == CTRL_U) handle_page_up(&matrix, &line);
+            } break;
+            case USER_INPUT_TYPE_ALT: {} break;
+            case USER_INPUT_TYPE_ARROW: {
+                if (c == UP_ARROW)        handle_scroll_up(&matrix, &line);
+                else if (c == DOWN_ARROW) handle_scroll_down(&matrix, &line);
+            } break;
+            case USER_INPUT_TYPE_NORMAL: {
+                if (c == 'k')      handle_scroll_up(&matrix, &line);
+                else if (c == 'j') handle_scroll_down(&matrix, &line);
+                else if (c == 'g') handle_jump_to_top(&matrix, &line);
+                else if (c == 'G') handle_jump_to_bottom(&matrix, &line);
+                else if (c == '/') handle_search(&matrix, &line, line, NULL, 0);
+                else if (c == 'n') jump_to_last_searched_word(&matrix, &line, 0);
+                else if (c == 'N') jump_to_last_searched_word(&matrix, &line, 1);
+                else if (c == 'q') goto done;
+                else if (c == 'Q') {
+                    reset_scrn();
+                    free(matrix.data);
+                    goto end;
+                }
+                else redraw_matrix(&matrix, line);
+            } break;
+            case USER_INPUT_TYPE_UNKNOWN: {} break;
+            default: {} break;
+            }
+        }
+
+    done:
+        reset_scrn();
+        free(matrix.data);
     }
 
- done:
-    reset_scrn();
-    free(matrix.data);
-
+ end:
     return 0;
 }
