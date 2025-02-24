@@ -180,6 +180,8 @@ User_Input_Type get_user_input(char *c) {
                 int next1 = get_char();
                 switch (next1) {
                 case DOWN_ARROW:
+                case RIGHT_ARROW:
+                case LEFT_ARROW:
                 case UP_ARROW:
                     *c = next1;
                     return USER_INPUT_TYPE_ARROW;
@@ -585,6 +587,14 @@ int main(int argc, char **argv) {
     atexit(cleanup);
     init_term();
 
+    struct {
+        Matrix *matrices;
+        size_t len, cap;
+    } buffers = {0}; {
+        buffers.matrices = s_malloc(sizeof(Matrix));
+        buffers.len = 0, buffers.cap = 1;
+    };
+
     for (size_t i = 0; i < paths.len; ++i) {
         const char *fp = paths.actual[i];
         const char *src = file_to_cstr(fp);
@@ -595,55 +605,70 @@ int main(int argc, char **argv) {
         }
 
         Matrix matrix = init_matrix(src);
+        da_append(buffers.matrices, buffers.len, buffers.cap, Matrix *, matrix);
+    }
+
+    int b_idx = 0;
+    while (1) {
+        Matrix *matrix = &buffers.matrices[b_idx];
 
         if (BIT_SET(g_flags, FLAG_TYPE_ONCE)) {
-            dump_matrix(&matrix, 0, matrix.rows);
+            dump_matrix(matrix, 0, matrix->rows);
             continue;
         }
 
-        dump_matrix(&matrix, 0, g_win_height);
+        reset_scrn();
+        dump_matrix(matrix, 0, g_win_height);
 
         size_t line = 0;
         while (1) {
             char c;
             User_Input_Type ty = get_user_input(&c);
+
             switch (ty) {
             case USER_INPUT_TYPE_CTRL: {
-                if (c == CTRL_N)      handle_scroll_down(&matrix, &line);
-                else if (c == CTRL_P) handle_scroll_up(&matrix, &line);
-                else if (c == CTRL_D) handle_page_down(&matrix, &line);
-                else if (c == CTRL_V) handle_page_down(&matrix, &line);
-                else if (c == CTRL_U) handle_page_up(&matrix, &line);
+                if (c == CTRL_N)      handle_scroll_down(matrix, &line);
+                else if (c == CTRL_P) handle_scroll_up(matrix, &line);
+                else if (c == CTRL_D) handle_page_down(matrix, &line);
+                else if (c == CTRL_V) handle_page_down(matrix, &line);
+                else if (c == CTRL_U) handle_page_up(matrix, &line);
             } break;
             case USER_INPUT_TYPE_ALT: {} break;
             case USER_INPUT_TYPE_ARROW: {
-                if (c == UP_ARROW)        handle_scroll_up(&matrix, &line);
-                else if (c == DOWN_ARROW) handle_scroll_down(&matrix, &line);
+                if (c == UP_ARROW)        handle_scroll_up(matrix, &line);
+                else if (c == DOWN_ARROW) handle_scroll_down(matrix, &line);
+                else if (c == RIGHT_ARROW && b_idx < buffers.len-1) {
+                    b_idx++;
+                    goto switch_buffer;
+                }
+                else if (c == LEFT_ARROW && b_idx > 0) {
+                    b_idx--;
+                    goto switch_buffer;
+                }
             } break;
             case USER_INPUT_TYPE_NORMAL: {
-                if (c == 'k')      handle_scroll_up(&matrix, &line);
-                else if (c == 'j') handle_scroll_down(&matrix, &line);
-                else if (c == 'g') handle_jump_to_top(&matrix, &line);
-                else if (c == 'G') handle_jump_to_bottom(&matrix, &line);
-                else if (c == '/') handle_search(&matrix, &line, line, NULL, 0);
-                else if (c == 'n') jump_to_last_searched_word(&matrix, &line, 0);
-                else if (c == 'N') jump_to_last_searched_word(&matrix, &line, 1);
-                else if (c == 'q') goto done;
+                if (c == 'k')      handle_scroll_up(matrix, &line);
+                else if (c == 'j') handle_scroll_down(matrix, &line);
+                else if (c == 'g') handle_jump_to_top(matrix, &line);
+                else if (c == 'G') handle_jump_to_bottom(matrix, &line);
+                else if (c == '/') handle_search(matrix, &line, line, NULL, 0);
+                else if (c == 'n') jump_to_last_searched_word(matrix, &line, 0);
+                else if (c == 'N') jump_to_last_searched_word(matrix, &line, 1);
+                else if (c == 'q') assert(0 && "unimplemented");
                 else if (c == 'Q') {
                     reset_scrn();
-                    free(matrix.data);
+                    free(matrix->data);
                     goto end;
                 }
-                else redraw_matrix(&matrix, line);
+                else redraw_matrix(matrix, line);
             } break;
             case USER_INPUT_TYPE_UNKNOWN: {} break;
             default: {} break;
             }
-        }
 
-    done:
-        reset_scrn();
-        free(matrix.data);
+        }
+    switch_buffer:
+        (void)0x0;
     }
 
  end:
