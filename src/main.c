@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <termios.h>
 #include <stdint.h>
+#include <regex.h>
 
 // Fourground Colors
 #define YELLOW        "\033[93m"
@@ -48,11 +49,15 @@
 #define RIGHT_ARROW   'C'
 #define LEFT_ARROW    'D'
 
-#define FLAG_1HY_HELP 'h'
-#define FLAG_1HY_ONCE 'o'
+#define FLAG_1HY_HELP   'h'
+#define FLAG_1HY_ONCE   'o'
+#define FLAG_1HY_LINES  'l'
+#define FLAG_1HY_FILTER 'f'
 
-#define FLAG_2HY_HELP "--help"
-#define FLAG_2HY_ONCE "--once"
+#define FLAG_2HY_HELP   "--help"
+#define FLAG_2HY_ONCE   "--once"
+#define FLAG_2HY_LINES  "--lines"
+#define FLAG_2HY_FILTER "--filter"
 
 #define ENTER(ch)     (ch) == '\n'
 #define BACKSPACE(ch) (ch) == 8 || (ch) == 127
@@ -97,10 +102,13 @@ static int g_win_height = DEF_WIN_HEIGHT;
 static struct termios g_old_termios;
 static char *g_last_search = NULL;
 static uint32_t g_flags = 0x0;
+static char *g_filter_pattern = NULL;
 
 typedef enum {
-    FLAG_TYPE_HELP,
-    FLAG_TYPE_ONCE,
+    FLAG_TYPE_HELP   = 1 << 0,
+    FLAG_TYPE_ONCE   = 1 << 1,
+    FLAG_TYPE_LINES  = 1 << 2,
+    FLAG_TYPE_FILTER = 1 << 3,
 } Flag_Type;
 
 typedef enum {
@@ -120,6 +128,24 @@ typedef struct {
     char *data;
     size_t len, cap;
 } Dyn_Str;
+
+int regex(const char *pattern, const char *s) {
+    regex_t regex;
+    int reti;
+
+    reti = regcomp(&regex, pattern, 0);
+    if (reti) {
+        perror("regex");
+        return 0;
+    }
+
+    reti = regexec(&regex, s, 0, NULL, 0);
+
+    regfree(&regex);
+
+    if (!reti) return 1;
+    else       return 0;
+}
 
 void *s_malloc(size_t b) {
     void *p = malloc(b);
@@ -233,7 +259,7 @@ Matrix init_matrix(const char *src) {
     }
     if (current_cols > cols) cols = current_cols;
 
-    Matrix matrix = {
+    Matrix matrix = (Matrix) {
         .data = (char *)s_malloc(rows * cols * sizeof(char)),
         .rows = rows,
         .cols = cols
@@ -281,8 +307,10 @@ Dyn_Str get_user_input_in_mini_buffer(char *prompt, char *last_input) {
         User_Input_Type ty = get_user_input(&c);
         switch (ty) {
         case USER_INPUT_TYPE_CTRL: {
-            if (c == CTRL_G)
-                assert(0);
+            if (c == CTRL_G) {
+                input.len = 0;
+                goto ok;
+            }
         } break;
         case USER_INPUT_TYPE_ALT:   break;
         case USER_INPUT_TYPE_ARROW: break;
@@ -314,6 +342,8 @@ void help(void) {
 
 void dump_matrix(const Matrix *const matrix, size_t start_row, size_t end_row) {
     for (size_t i = start_row; i < end_row + start_row; ++i) {
+        if (BIT_SET(g_flags, FLAG_TYPE_LINES))
+            printf("%zu: ", i);
         for (size_t j = 0; j < matrix->cols; ++j)
             putchar(MAT_AT(matrix->data, matrix->cols, i, j));
         putchar('\n');
@@ -404,6 +434,9 @@ void handle_search(Matrix *matrix, size_t *line, size_t start_row, char *jump_to
         actual_len = strlen(actual);
     }
 
+    if (actual_len == 0)
+        return;
+
     size_t found = find_word_in_matrix(matrix, start_row, actual, actual_len, reverse);
 
     if (found) {
@@ -476,11 +509,21 @@ char *eat(int *argc, char ***argv) {
     return *(*argv)++;
 }
 
+void handle_filter_flag(int *argc, char ***argv) {
+    g_filter_pattern = eat(argc, argv);
+}
+
 void handle_2hy_flag(const char *arg, int *argc, char ***argv) {
     if (!strcmp(arg, FLAG_2HY_HELP))
         help();
     else if (!strcmp(arg, FLAG_2HY_ONCE))
         g_flags |= FLAG_TYPE_ONCE;
+    else if (!strcmp(arg, FLAG_2HY_LINES))
+        g_flags |= FLAG_TYPE_LINES;
+    else if (!strcmp(arg, FLAG_2HY_FILTER)) {
+        g_flags |= FLAG_TYPE_FILTER;
+        handle_filter_flag(argc, argv);
+    }
     else
         err_wargs("Unknown option: `%s`", arg);
 }
@@ -492,8 +535,15 @@ void handle_1hy_flag(const char *arg, int *argc, char ***argv) {
             help();
         else if (*it == FLAG_1HY_ONCE)
             g_flags |= FLAG_TYPE_ONCE;
+        else if (*it == FLAG_1HY_LINES)
+            g_flags |= FLAG_TYPE_LINES;
+        else if (*it == FLAG_1HY_FILTER) {
+            g_flags |= FLAG_TYPE_FILTER;
+            handle_filter_flag(argc, argv);
+        }
         else
             err_wargs("Unknown option: `%c`", *it);
+        ++it;
     }
 }
 
