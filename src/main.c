@@ -74,11 +74,13 @@
 #define FLAG_1HY_ONCE   'o'
 #define FLAG_1HY_LINES  'l'
 #define FLAG_1HY_FILTER 'f'
+#define FLAG_1HY_EDITOR 'e'
 
 #define FLAG_2HY_HELP   "--help"
 #define FLAG_2HY_ONCE   "--once"
 #define FLAG_2HY_LINES  "--lines"
 #define FLAG_2HY_FILTER "--filter"
+#define FLAG_2HY_EDITOR "--editor"
 
 #define BUFFERS_LIM 256
 
@@ -134,6 +136,9 @@ static char *g_usage = "Bless internal usage buffer:\n\n"
     "C-p or k for scroll up\n\n"
     "Search\n"
     "    /           Enable search mode\n"
+    "    :           Special input mode\n"
+    "    :q          Quit buffer\n"
+    "    :w          Save buffer\n"
     "    n           Next occurrence\n"
     "    N           Previous occurrence\n"
     "    C-g         Cancel search\n"
@@ -153,7 +158,6 @@ static char *g_usage = "Bless internal usage buffer:\n\n"
     "    M-v         Page up\n"
     "Agnostic Keybindings\n"
     "    ?           Open this usage buffer\n"
-    "    :           Special input mode\n"
     "    L           Refresh buffer\n"
     "    O           Open file in place\n"
     "    q           Quit buffer\n"
@@ -175,7 +179,17 @@ static int            g_win_height     = DEF_WIN_HEIGHT;
 static char          *g_last_search    = NULL;
 static uint32_t       g_flags          = 0x0;
 static char          *g_filter_pattern = NULL;
+static char          *g_editor         = "vim";
 static struct termios g_old_termios;
+static char *g_supported_editors[] = {
+    "vim",
+    "nvim",
+    "nano",
+    "emacs",
+    "vscode",
+};
+static size_t g_supported_editors_len =
+    sizeof(g_supported_editors)/sizeof(*g_supported_editors);
 
 static struct {
     char **paths;
@@ -189,6 +203,7 @@ typedef enum {
     FLAG_TYPE_ONCE   = 1 << 1,
     FLAG_TYPE_LINES  = 1 << 2,
     FLAG_TYPE_FILTER = 1 << 3,
+    FLAG_TYPE_EDITOR = 1 << 4,
 } Flag_Type;
 
 typedef enum {
@@ -663,10 +678,14 @@ void help(void) {
 
     printf("Usage: bless [filepath...] [options...]\n");
     printf("Options:\n");
-    printf("  %s,   -%c    Print this message\n", FLAG_2HY_HELP, FLAG_1HY_HELP);
-    printf("  %s,   -%c    Just print the files (similar to `cat`)\n", FLAG_2HY_ONCE, FLAG_1HY_ONCE);
-    printf("  %s,  -%c    Show Bless line numbers (not file line numbers, this is unimplemented)\n", FLAG_2HY_LINES, FLAG_1HY_LINES);
-    printf("  %s, -%c    Filter using regex\n", FLAG_2HY_FILTER, FLAG_1HY_FILTER);
+    printf("  %s,   -%c           Print this message\n", FLAG_2HY_HELP, FLAG_1HY_HELP);
+    printf("  %s,   -%c           Just print the files (similar to `cat`)\n", FLAG_2HY_ONCE, FLAG_1HY_ONCE);
+    printf("  %s,  -%c           Show Bless line numbers (not file line numbers, this is unimplemented)\n", FLAG_2HY_LINES, FLAG_1HY_LINES);
+    printf("  %s, -%c <regex>   Filter using regex\n", FLAG_2HY_FILTER, FLAG_1HY_FILTER);
+    printf("  %s, -%c <editor>  Change the default editor\n", FLAG_2HY_EDITOR, FLAG_1HY_EDITOR);
+    printf("\nValid editors are:\n");
+    for (size_t i = 0; i < g_supported_editors_len; ++i)
+        printf("    %s\n", g_supported_editors[i]);
     exit(EXIT_SUCCESS);
 }
 
@@ -906,6 +925,10 @@ void handle_filter_flag(int *argc, char ***argv) {
     g_filter_pattern = eat(argc, argv);
 }
 
+void handle_editor_flag(int *argc, char ***argv) {
+    g_editor = eat(argc, argv);
+}
+
 void handle_2hy_flag(const char *arg, int *argc, char ***argv) {
     if (!strcmp(arg, FLAG_2HY_HELP))
         help();
@@ -916,6 +939,10 @@ void handle_2hy_flag(const char *arg, int *argc, char ***argv) {
     else if (!strcmp(arg, FLAG_2HY_FILTER)) {
         g_flags |= FLAG_TYPE_FILTER;
         handle_filter_flag(argc, argv);
+    }
+    else if (!strcmp(arg, FLAG_2HY_EDITOR)) {
+        g_flags |= FLAG_TYPE_EDITOR;
+        handle_editor_flag(argc, argv);
     }
     else
         err_wargs("Unknown option: `%s`", arg);
@@ -933,6 +960,10 @@ void handle_1hy_flag(const char *arg, int *argc, char ***argv) {
         else if (*it == FLAG_1HY_FILTER) {
             g_flags |= FLAG_TYPE_FILTER;
             handle_filter_flag(argc, argv);
+        }
+        else if (*it == FLAG_1HY_EDITOR) {
+            g_flags |= FLAG_TYPE_EDITOR;
+            handle_editor_flag(argc, argv);
         }
         else
             err_wargs("Unknown option: `%c`", *it);
@@ -979,13 +1010,28 @@ void launch_editor(Matrix *matrix, size_t line) {
 
     if (pid == 0) { // Child process
         char line_arg[32];
-        snprintf(line_arg, sizeof(line_arg), "+%zu", line+1);
 
-        execlp("vim", "vim", line_arg, matrix->filepath, NULL);
+        if (strcmp(g_editor, "vim") == 0 || strcmp(g_editor, "nvim") == 0) {
+            snprintf(line_arg, sizeof(line_arg), "+%zu", line + 1);
+            execlp(g_editor, g_editor, line_arg, matrix->filepath, NULL);
+        } else if (strcmp(g_editor, "nano") == 0) {
+            snprintf(line_arg, sizeof(line_arg), "+%zu", line + 1);
+            execlp("nano", "nano", line_arg, matrix->filepath, NULL);
+        } else if (strcmp(g_editor, "vscode") == 0) {
+            snprintf(line_arg, sizeof(line_arg), "--goto");
+            execlp("code", "code", line_arg, matrix->filepath, NULL);
+        } else if (strcmp(g_editor, "emacs") == 0) {
+            snprintf(line_arg, sizeof(line_arg), "+%zu", line + 1);
+            execlp("emacs", "emacs", line_arg, matrix->filepath, NULL);
+        } else {
+            fprintf(stderr, "Error: Unsupported editor `%s`\n", g_editor);
+            _exit(1);
+        }
+
         perror("execlp failed"); // If execlp fails
         _exit(1);
     } else if (pid > 0) { // Parent process
-        wait(NULL); // Wait for Vim to exit
+        wait(NULL); // Wait for the editor to exit
     } else {
         perror("fork failed");
     }
@@ -995,6 +1041,38 @@ void launch_editor(Matrix *matrix, size_t line) {
     reset_scrn();
     dump_matrix(matrix, line, g_win_height);
 }
+
+/* void launch_editor(Matrix *matrix, size_t line) { */
+/*     if (!strcmp(matrix->filepath, g_iu_fp) || !strcmp(matrix->filepath, g_ob_fp)) { */
+/*         err_msg_wmatrix_wargs(matrix, line, "Cannot edit buffer `%s` as it is internal", matrix->filepath); */
+/*         return; */
+/*     } */
+
+/*     if (!matrix || !matrix->filepath) { */
+/*         fprintf(stderr, "Error: Invalid matrix or filepath\n"); */
+/*         return; */
+/*     } */
+
+/*     pid_t pid = fork(); */
+
+/*     if (pid == 0) { // Child process */
+/*         char line_arg[32]; */
+/*         snprintf(line_arg, sizeof(line_arg), "+%zu", (int)line+1); */
+
+/*         execlp("vim", "vim", line_arg, matrix->filepath, NULL); */
+/*         perror("execlp failed"); // If execlp fails */
+/*         _exit(1); */
+/*     } else if (pid > 0) { // Parent process */
+/*         wait(NULL); // Wait for Vim to exit */
+/*     } else { */
+/*         perror("fork failed"); */
+/*     } */
+
+/*     free(matrix->data); */
+/*     *matrix = init_matrix(file_to_cstr(matrix->filepath), matrix->filepath); */
+/*     reset_scrn(); */
+/*     dump_matrix(matrix, line, g_win_height); */
+/* } */
 
 void append_str(char **dest, size_t *size, const char *format, ...) {
     va_list args;
@@ -1074,22 +1152,6 @@ char *saved_buffer_contents_create() {
     return output;
 }
 
-void center_scrn(const Matrix *const matrix, size_t *line) {
-    /* if (!matrix || !line) return; // Guard against null pointers */
-    /* if (matrix->rows == 0) return; // No rows in the matrix */
-
-    /* if (*line < g_win_height / 2) { */
-    /*     *line = 0; // Prevent underflow */
-    /* } else if (*line > matrix->rows - 1) { */
-    /*     *line = matrix->rows - 1; // Prevent out-of-bounds access */
-    /* } else { */
-    /*     *line = *line - g_win_height / 2; */
-    /* } */
-
-    /* reset_scrn(); */
-    /* dump_matrix(matrix, *line, g_win_height); */
-}
-
 int main(int argc, char **argv) {
     g_saved_buffers.paths = s_malloc(sizeof(char *));
     g_saved_buffers.len = 0, g_saved_buffers.cap = 1;
@@ -1122,6 +1184,18 @@ int main(int argc, char **argv) {
 
     atexit(cleanup);
     init_term();
+
+    if (BIT_SET(g_flags, FLAG_TYPE_EDITOR)) {
+        int ok = 0;
+        for (size_t i = 0; g_supported_editors_len; ++i) {
+            if (!strcmp(g_editor, g_supported_editors[i])) {
+                ok = 1;
+                break;
+            }
+        }
+        if (!ok)
+            err_wargs("invalid editor: %s", g_editor);
+    }
 
     struct {
         Matrix matrices[BUFFERS_LIM];
@@ -1222,7 +1296,11 @@ int main(int argc, char **argv) {
                 else if (c == ':') {
                     char *inp = get_user_input_in_mini_buffer(": ", NULL);
                     int is_open_buffer = !strcmp(matrix->filepath, g_ob_fp);
-                    if (is_open_buffer && inp && isdigit(inp[0])) {
+                    if (!inp)
+                        break;
+                    else if (inp && inp[0] == 'q' && !inp[1])
+                        goto delete_buffer;
+                    else if (is_open_buffer && inp && isdigit(inp[0])) {
                         int idx = atoi(inp);
                         Matrix selected_matrix = init_matrix(file_to_cstr(g_saved_buffers.paths[idx]), g_saved_buffers.paths[idx]);
                         buffers.matrices[buffers.len] = selected_matrix;
@@ -1236,11 +1314,11 @@ int main(int argc, char **argv) {
                         char *saved_buffer_contents = saved_buffer_contents_create();
                         *matrix = init_matrix(saved_buffer_contents, g_ob_fp);
                         goto switch_buffer;
-                    } else if (!inp) {
-                        break;
                     }
+                    else if (inp[0] == 'w' && !inp[1])
+                        save_buffer(matrix, line);
                     else {
-                        assert(0 && "unimplemented");
+                        err_msg_wmatrix_wargs(matrix, line, "Not a valid special input command: `%s`", inp);
                     }
                 }
                 else if (c == 'n') jump_to_last_searched_word(matrix, &line, 0);
