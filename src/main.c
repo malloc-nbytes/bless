@@ -210,7 +210,7 @@ void cleanup(void) {
 void init_term(void) {
     struct winsize w;
     if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) == 0)
-        g_win_width = w.ws_col, g_win_height = w.ws_row;
+        g_win_width = w.ws_col-1, g_win_height = w.ws_row-1;
     else
         perror("ioctl failed");
 
@@ -669,7 +669,7 @@ int main(int argc, char **argv) {
                 else if (c == '/') handle_search(matrix, &line, line, NULL, 0);
                 else if (c == 'n') jump_to_last_searched_word(matrix, &line, 0);
                 else if (c == 'N') jump_to_last_searched_word(matrix, &line, 1);
-                else if (c == 'q') assert(0 && "unimplemented");
+                else if (c == 'q') assert(0);
                 else if (c == 'Q') {
                     reset_scrn();
                     free(matrix->data);
