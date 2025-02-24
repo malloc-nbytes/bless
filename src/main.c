@@ -11,6 +11,7 @@
 #include <sys/stat.h>
 #include <limits.h>
 #include <sys/wait.h>
+#include <stdarg.h>
 
 // Fourground Colors
 #define YELLOW        "\033[93m"
@@ -107,6 +108,8 @@
 #define DEF_WIN_WIDTH 80
 #define DEF_WIN_HEIGHT 24
 
+static char *g_ob_fp = "bless-open-buffer";
+static char *g_iu_fp = "bless-usage";
 static char *g_usage = "Bless internal usage buffer:\n\n"
 "__________.__                        \n"
 "\\______   \\  |   ____   ______ ______\n"
@@ -136,25 +139,34 @@ static char *g_usage = "Bless internal usage buffer:\n\n"
     "    M-v         Page up\n"
     "Agnostic Keybindings\n"
     "    ?           Open this usage buffer\n"
+    "    :           Special input mode\n"
     "    q           Quit buffer\n"
     "    d           Quit buffer\n"
     "    Q           Quit all buffers\n"
     "    D           Quit all buffers\n"
+    "    J           Left buffer\n"
+    "    K           Right buffer\n"
     "    C-w         Save a buffer\n"
     "    C-o         Open a saved buffer\n"
-    "    I           Open the current line in Vim"
+    "    I           Open the current line in Vim\n"
     "    [UP]        Scroll up\n"
     "    [DOWN]      Scroll down\n"
     "    [LEFT]      Left buffer\n"
     "    [RIGHT]     Right buffer\n"
     "";
-
-static int g_win_width  = DEF_WIN_WIDTH;
-static int g_win_height = DEF_WIN_HEIGHT;
+static int            g_win_width      = DEF_WIN_WIDTH;
+static int            g_win_height     = DEF_WIN_HEIGHT;
+static char          *g_last_search    = NULL;
+static uint32_t       g_flags          = 0x0;
+static char          *g_filter_pattern = NULL;
 static struct termios g_old_termios;
-static char *g_last_search = NULL;
-static uint32_t g_flags = 0x0;
-static char *g_filter_pattern = NULL;
+
+static struct {
+    char **paths;
+    size_t len, cap;
+    size_t *last_saved_lines;
+    size_t lsl_len, lsl_cap;
+} g_saved_buffers = {0};
 
 typedef enum {
     FLAG_TYPE_HELP   = 1 << 0,
@@ -272,6 +284,7 @@ User_Input_Type get_user_input(char *c) {
         else if (*c == CTRL_V) return USER_INPUT_TYPE_CTRL;
         else if (*c == CTRL_W) return USER_INPUT_TYPE_CTRL;
         else if (*c == CTRL_O) return USER_INPUT_TYPE_CTRL;
+        else if (*c == CTRL_L) return USER_INPUT_TYPE_CTRL;
         else return USER_INPUT_TYPE_NORMAL;
     }
     return USER_INPUT_TYPE_UNKNOWN;
@@ -426,17 +439,17 @@ void parse_config_file(char ***paths,
 
     while (fgets(line, sizeof(line), file)) {
         size_t len = strlen(line);
-        if (len > 0 && line[len - 1] == '\n') {
-            line[len - 1] = '\0';  // Remove newline
-        }
+        if (len > 0 && line[len - 1] == '\n')
+            // Remove newline
+            line[len - 1] = '\0';
 
         char *path = NULL;
         char *line_str = NULL;
         char *name = NULL;
 
-        path = strtok(line, ":");  // First part: file path
+        path = strtok(line, ":");      // First part: file path
         line_str = strtok(NULL, ":");  // Second part: line number
-        name = strtok(NULL, ":");  // Third part: name
+        name = strtok(NULL, ":");      // Third part: name
 
         if (path && line_str && name) {
             *paths = realloc(*paths, sizeof(char*) * (*info_len + 1));
@@ -469,18 +482,15 @@ char *get_user_input_in_mini_buffer(char *prompt, char *last_input) {
         input_lim = 256,
         prompt_len = strlen(prompt);
 
-    size_t backspace = prompt_len;
-
     char *input = (char *)s_malloc(input_lim);
     (void)memset(input, '\0', input_lim);
     size_t input_len = 0;
 
     if (last_input) {
         out(last_input, 0);
-        for (size_t i = 0; last_input[i]; ++i) {
-            input[input_len++] = last_input[i];
-            ++backspace;
-        }
+        size_t last_len = strlen(last_input);
+        memcpy(input, last_input, last_len);
+        input_len = last_len;
     }
 
     while (1) {
@@ -498,17 +508,15 @@ char *get_user_input_in_mini_buffer(char *prompt, char *last_input) {
         case USER_INPUT_TYPE_NORMAL: {
             if (ENTER(c)) goto ok;
             if (BACKSPACE(c)) {
-                if (backspace > prompt_len) {
+                if (input_len > 0) {
                     out("\b \b", 0);
-                    input[input_len--] = '\0';
-                    --backspace;
+                    input[--input_len] = '\0';
                 }
             }
             else {
                 if (input_len >= input_lim)
                     err_wargs("input length must be < %zu", input_lim);
                 input[input_len++] = c;
-                ++backspace;
             }
         } break;
         case USER_INPUT_TYPE_UNKNOWN: break;
@@ -536,14 +544,18 @@ void help(void) {
 }
 
 void dump_matrix(const Matrix *const matrix, size_t start_row, size_t end_row) {
-    if (end_row > matrix->rows)
-        end_row = matrix->rows;
+    /* if (end_row > matrix->rows) */
+    /*     end_row = matrix->rows; */
 
     for (size_t i = start_row; i < end_row + start_row; ++i) {
-        if (BIT_SET(g_flags, FLAG_TYPE_LINES))
+        if (BIT_SET(g_flags, FLAG_TYPE_LINES) && i < matrix->rows)
             printf("%zu: ", i+1);
-        for (size_t j = 0; j < matrix->cols; ++j)
-            putchar(MAT_AT(matrix->data, matrix->cols, i, j));
+        for (size_t j = 0; j < matrix->cols; ++j) {
+            if (i >= matrix->rows)
+                putchar(' ');
+            else
+                putchar(MAT_AT(matrix->data, matrix->cols, i, j));
+        }
         putchar('\n');
     }
 }
@@ -554,11 +566,32 @@ void reset_scrn(void) {
     fflush(stdout);
 }
 
+#define err_msg_wmatrix_wargs(matrix, line, msg, ...)   \
+    do {                                                \
+        reset_scrn();                                   \
+        dump_matrix(matrix, line, g_win_height-1);      \
+        color(RED BOLD UNDERLINE);                      \
+        printf(msg "\n", __VA_ARGS__);                  \
+        fflush(stdout);                                 \
+        color(RESET);                                   \
+    } while (0)
+
+#define err_msg_wmatrix(matrix, line, msg)              \
+    do {                                                \
+        reset_scrn();                                   \
+        dump_matrix(matrix, line, g_win_height-1);      \
+        color(RED BOLD UNDERLINE);                      \
+        printf(msg "\n");                               \
+        fflush(stdout);                                 \
+        color(RESET);                                   \
+    } while (0)
+
 void handle_scroll_down(const Matrix *const matrix, size_t *const line) {
-    if (*line + g_win_height < matrix->rows) {
-        reset_scrn();
-        dump_matrix(matrix, ++(*line), g_win_height);
-    }
+    // Scrolling down does not need bounds checking
+    // because dump_matrix will fill out-of-bounds space
+    // with empty spaces.
+    reset_scrn();
+    dump_matrix(matrix, ++(*line), g_win_height);
 }
 
 void handle_scroll_up(const Matrix *const matrix, size_t *const line) {
@@ -641,12 +674,8 @@ void handle_search(Matrix *matrix, size_t *line, size_t start_row, char *jump_to
         dump_matrix(matrix, *line, g_win_height);
     }
     else {
-        reset_scrn();
-        dump_matrix(matrix, *line, g_win_height-1);
-        color(RED BOLD UNDERLINE);
-        printf("[SEARCH NOT FOUND: %s]\n", actual);
-        fflush(stdout);
-        color(RESET);
+        err_msg_wmatrix_wargs(matrix, *line, "[SEARCH NOT FOUND: %s]", actual);
+        return;
     }
 
     if (!jump_to_next) {
@@ -658,25 +687,17 @@ void handle_search(Matrix *matrix, size_t *line, size_t start_row, char *jump_to
 
 void jump_to_last_searched_word(Matrix *matrix, size_t *line, int reverse) {
     if (!g_last_search) {
-        reset_scrn();
-        dump_matrix(matrix, *line, g_win_height-1);
-        color(RED BOLD UNDERLINE);
-        out("[NO PREVIOUS SEARCH]", 1);
-        color(RESET);
+        err_msg_wmatrix(matrix, *line, "[NO PREVIOUS SEARCH]");
         return;
     }
-    if (!reverse)
-        handle_search(matrix, line, *line+1, g_last_search, 0);
-    else
-        handle_search(matrix, line, *line-1, g_last_search, 1);
+    if (!reverse) handle_search(matrix, line, *line+1, g_last_search, 0);
+    else          handle_search(matrix, line, *line-1, g_last_search, 1);
 }
 
 void handle_page_up(Matrix *matrix, size_t *line) {
     if (*line > 0) {
-        if (*line < g_win_height / 2)
-            *line = 0;
-        else
-            *line -= g_win_height / 2;
+        if (*line < g_win_height / 2) *line = 0;
+        else                          *line -= g_win_height / 2;
         dump_matrix(matrix, *line, g_win_height);
     }
 }
@@ -812,6 +833,11 @@ void display_tabs(const Matrix *const matrix,
 }
 
 void launch_editor(Matrix *matrix, size_t line) {
+    if (!strcmp(matrix->filepath, g_iu_fp) || !strcmp(matrix->filepath, g_ob_fp)) {
+        err_msg_wmatrix_wargs(matrix, line, "Cannot edit buffer `%s` as it is internal", matrix->filepath);
+        return;
+    }
+
     if (!matrix || !matrix->filepath) {
         fprintf(stderr, "Error: Invalid matrix or filepath\n");
         return;
@@ -838,14 +864,32 @@ void launch_editor(Matrix *matrix, size_t line) {
     dump_matrix(matrix, line, g_win_height);
 }
 
-int open_saved_buffer(Matrix *matrix, size_t *last_off_line) {
-    reset_scrn();
+void append_str(char **dest, size_t *size, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
 
-    color(BOLD UNDERLINE);
-    printf("=== Saved Buffers ===\n");
-    color(RESET BOLD);
-    printf("Use C-g to cancel\n\n");
-    color(RESET);
+    char temp[1024];
+    int len = vsnprintf(temp, sizeof(temp), format, args);
+    va_end(args);
+
+    if (len < 0) return;
+
+    size_t new_size = *size + len + 1;
+    char *new_str = realloc(*dest, new_size);
+    if (!new_str) return;
+
+    strcpy(new_str + *size, temp);
+    *dest = new_str;
+    *size += len;
+}
+
+char *saved_buffer_contents_create() {
+    char *output = calloc(1, 1);
+    size_t output_size = 0;
+
+    append_str(&output, &output_size, "\033[1;4m=== Saved Buffers ===\033[0m\n");
+    append_str(&output, &output_size, "Use :<number> to select a buffer\n");
+    append_str(&output, &output_size, "This buffer will close upon selection\n\n");
 
     char **info_paths = malloc(sizeof(char *) * 10);
     size_t *info_lines = malloc(sizeof(size_t) * 10);
@@ -854,7 +898,7 @@ int open_saved_buffer(Matrix *matrix, size_t *last_off_line) {
 
     parse_config_file(&info_paths, &info_lines, &info_names, &info_len);
 
-    // Find the maximum length of name, path, and line
+    // Find max column widths
     size_t max_name_len = 0, max_path_len = 0;
     for (size_t i = 0; i < info_len; ++i) {
         size_t name_len = strlen(info_names[i]);
@@ -863,48 +907,46 @@ int open_saved_buffer(Matrix *matrix, size_t *last_off_line) {
         if (path_len > max_path_len) max_path_len = path_len;
     }
 
-    // Add padding to align the columns
-    size_t adjusted_name_len = max_name_len + 2; // 2 for the brackets
+    size_t adjusted_name_len = max_name_len + 2;
 
-    printf("%-4s %-*s %-*s %-*s\n", "Index", adjusted_name_len, "Name", max_path_len, "Path", 10, "Line");
-    printf("----------------------------------------------------------------\n");
+    append_str(&output, &output_size, "%-4s %-*s %-*s %-*s\n", "Index", adjusted_name_len, "Name", max_path_len, "Path", 10, "Line");
+    append_str(&output, &output_size, "----------------------------------------------------------------\n");
 
     for (size_t i = 0; i < info_len; ++i) {
-        const char *path = info_paths[i];
+        char *path = info_paths[i];
         const size_t line = info_lines[i];
         const char *name = info_names[i];
 
-        // Print the information with padding
-        color(BOLD);
-        printf("%-4zu [%-*s] %-*s %-*zu\n", i, adjusted_name_len, name, max_path_len, path, 10, line);
-        color(RESET);
+        append_str(&output, &output_size, "\033[1m%-4zu [%-*s] %-*s %-*zu\033[0m\n", i, adjusted_name_len, name, max_path_len, path, 10, line);
+
         const char *preview = get_line_from_cstr(path, line);
         if (preview) {
             while (*preview && *preview == ' ') ++preview;
-            printf("└────── %s\n", preview);
+            append_str(&output, &output_size, "└────── %s\n", preview);
+        } else {
+            append_str(&output, &output_size, "[no preview available]\n");
         }
-        else
-            printf("[no preview available]");
+
+        if (i >= g_saved_buffers.len) {
+            da_append(g_saved_buffers.paths, g_saved_buffers.len, g_saved_buffers.cap, char **, path);
+            da_append(g_saved_buffers.last_saved_lines, g_saved_buffers.lsl_len, g_saved_buffers.lsl_cap, size_t *, line);
+        }
     }
-    putchar('\n');
 
-    char *input = get_user_input_in_mini_buffer("Enter Index: ", NULL);
+    append_str(&output, &output_size, "\n");
 
-    if (!input) return 0;
-
-    int idx = atoi(input);
-
-    *matrix = init_matrix(file_to_cstr(info_paths[idx]), info_paths[idx]);
-    *last_off_line = info_lines[idx];
-
-    return 1;
+    return output;
 }
 
 int main(int argc, char **argv) {
+    g_saved_buffers.paths = s_malloc(sizeof(char *));
+    g_saved_buffers.len = 0, g_saved_buffers.cap = 1;
+    g_saved_buffers.last_saved_lines = s_malloc(sizeof(size_t));
+    g_saved_buffers.lsl_len = 0;
+    g_saved_buffers.lsl_cap = 1;
+
     init_config_file();
 
-    /* if (argc <= 1) */
-    /*     help(); */
     ++argv, --argc;
 
     struct {
@@ -953,11 +995,10 @@ int main(int argc, char **argv) {
     }
 
     if (buffers.len == 0) {
-        char *iu_fp = "internal-usage";
-        Matrix usage_matrix = init_matrix(g_usage, iu_fp);
+        Matrix usage_matrix = init_matrix(g_usage, g_iu_fp);
         buffers.matrices[buffers.len] = usage_matrix;
         buffers.last_viewed_lines[buffers.len++] = 0;
-        paths.actual[paths.len++] = iu_fp;
+        paths.actual[paths.len++] = g_iu_fp;
     }
 
     int b_idx = 0;
@@ -989,15 +1030,16 @@ int main(int argc, char **argv) {
                 else if (c == CTRL_V) handle_page_down(matrix, &line);
                 else if (c == CTRL_U) handle_page_up(matrix, &line);
                 else if (c == CTRL_W) save_buffer(matrix, line);
+                else if (c == CTRL_L) redraw_matrix(matrix, line);
                 else if (c == CTRL_O) {
-                    size_t left_off_line = 0;
-                    Matrix new_matrix = {0};
-                    if (!open_saved_buffer(&new_matrix, &left_off_line))
-                        goto switch_buffer;
-                    buffers.matrices[buffers.len] = new_matrix;
-                    buffers.last_viewed_lines[buffers.len++] = left_off_line;
+                    char *saved_buffer_contents = saved_buffer_contents_create();
+                    Matrix open_buffer_matrix = init_matrix(saved_buffer_contents, g_ob_fp);
+
+                    buffers.matrices[buffers.len] = open_buffer_matrix;
+                    buffers.last_viewed_lines[buffers.len++] = 0;
                     b_idx = buffers.len-1;
-                    paths.actual[paths.len++] = new_matrix.filepath;
+                    paths.actual[paths.len++] = g_ob_fp;
+
                     goto switch_buffer;
                 }
             } break;
@@ -1022,18 +1064,31 @@ int main(int argc, char **argv) {
                 else if (c == 'g') handle_jump_to_top(matrix, &line);
                 else if (c == 'G') handle_jump_to_bottom(matrix, &line);
                 else if (c == '/') handle_search(matrix, &line, line, NULL, 0);
+                else if (c == ':') {
+                    char *inp = get_user_input_in_mini_buffer(": ", NULL);
+                    if (!strcmp(matrix->filepath, g_ob_fp)) {
+                        int idx = atoi(inp);
+                        Matrix selected_matrix = init_matrix(file_to_cstr(g_saved_buffers.paths[idx]), g_saved_buffers.paths[idx]);
+                        buffers.matrices[buffers.len] = selected_matrix;
+                        buffers.last_viewed_lines[buffers.len++] = g_saved_buffers.last_saved_lines[idx];
+                        paths.actual[paths.len++] = selected_matrix.filepath;
+                        goto delete_buffer;
+                    }
+                    else {
+                        assert(0 && "unimplemented");
+                    }
+                }
                 else if (c == 'n') jump_to_last_searched_word(matrix, &line, 0);
                 else if (c == 'N') jump_to_last_searched_word(matrix, &line, 1);
                 else if (c == 'I') launch_editor(matrix, line);
                 else if (c == 'q') goto delete_buffer;
                 else if (c == 'd') goto delete_buffer;
                 else if (c == '?') {
-                    char *iu_fp = "internal-usage";
-                    Matrix usage_matrix = init_matrix(g_usage, iu_fp);
+                    Matrix usage_matrix = init_matrix(g_usage, g_iu_fp);
                     buffers.matrices[buffers.len] = usage_matrix;
                     buffers.last_viewed_lines[buffers.len++] = 0;
                     b_idx = buffers.len-1;
-                    paths.actual[paths.len++] = iu_fp;
+                    paths.actual[paths.len++] = g_iu_fp;
                     goto switch_buffer;
                 }
                 else if (c == 'Q' || c == 'D') {
@@ -1059,7 +1114,9 @@ int main(int argc, char **argv) {
         }
 
     delete_buffer:
-        free(matrix->data);
+        if (strcmp(matrix->filepath, g_ob_fp) != 0
+            && strcmp(matrix->filepath, g_iu_fp) != 0)
+            free(matrix->data);
 
         for (size_t j = b_idx; j < buffers.len - 1; ++j) {
             buffers.matrices[j] = buffers.matrices[j + 1];
