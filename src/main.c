@@ -126,11 +126,6 @@ typedef struct {
     size_t rows, cols;
 } Matrix;
 
-typedef struct {
-    char *data;
-    size_t len, cap;
-} Dyn_Str;
-
 int regex(const char *pattern, const char *s) {
     regex_t regex;
     int reti;
@@ -191,6 +186,7 @@ User_Input_Type get_user_input(char *c) {
                     return USER_INPUT_TYPE_UNKNOWN;
                 }
             } else { // [ALT] key
+                *c = next0;
                 return USER_INPUT_TYPE_ALT;
             }
         }
@@ -299,20 +295,24 @@ Matrix init_matrix(const char *src) {
     return matrix;
 }
 
-Dyn_Str get_user_input_in_mini_buffer(char *prompt, char *last_input) {
+char *get_user_input_in_mini_buffer(char *prompt, char *last_input) {
     assert(prompt);
     out(prompt, 0);
 
-    Dyn_Str input = (Dyn_Str) {
-        .data = (char *)s_malloc(1),
-        .len = 0,
-        .cap = 1,
-    };
+    const size_t
+        input_lim = 256,
+        prompt_len = strlen(prompt);
+
+    size_t backspace = prompt_len;
+
+    char *input = s_malloc(input_lim);
+    (void)memset(input, '\0', input_lim);
+    size_t input_len = 0;
 
     if (last_input) {
         out(last_input, 0);
         for (size_t i = 0; last_input[i]; ++i)
-            da_append(input.data, input.len, input.cap, char *, last_input[i]);
+            input[input_len++] = last_input[i];
     }
 
     while (1) {
@@ -321,7 +321,7 @@ Dyn_Str get_user_input_in_mini_buffer(char *prompt, char *last_input) {
         switch (ty) {
         case USER_INPUT_TYPE_CTRL: {
             if (c == CTRL_G) {
-                input.len = 0;
+                input_len = 0;
                 goto ok;
             }
         } break;
@@ -330,11 +330,18 @@ Dyn_Str get_user_input_in_mini_buffer(char *prompt, char *last_input) {
         case USER_INPUT_TYPE_NORMAL: {
             if (ENTER(c)) goto ok;
             if (BACKSPACE(c)) {
-                out("\b \b", 0);
-                input.data[input.len--] = '\0';
+                if (backspace > prompt_len) {
+                    out("\b \b", 0);
+                    input[input_len--] = '\0';
+                    --backspace;
+                }
             }
-            else
-                da_append(input.data, input.len, input.cap, char *, c);
+            else {
+                if (input_len >= input_lim)
+                    err_wargs("input length must be < %d", input_lim);
+                input[input_len++] = c;
+                ++backspace;
+            }
         } break;
         case USER_INPUT_TYPE_UNKNOWN: break;
         default: break;
@@ -440,15 +447,11 @@ void handle_search(Matrix *matrix, size_t *line, size_t start_row, char *jump_to
     char *actual = NULL;
     size_t actual_len = 0;
 
-    if (!jump_to_next) {
-        Dyn_Str input = get_user_input_in_mini_buffer("/", g_last_search);
-        actual = input.data;
-        actual_len = input.len;
-    }
-    else {
+    if (!jump_to_next)
+        actual = get_user_input_in_mini_buffer("/", g_last_search);
+    else
         actual = jump_to_next;
-        actual_len = strlen(actual);
-    }
+    actual_len = strlen(actual);
 
     if (actual_len == 0)
         return;
@@ -463,7 +466,8 @@ void handle_search(Matrix *matrix, size_t *line, size_t start_row, char *jump_to
         reset_scrn();
         dump_matrix(matrix, *line, g_win_height-1);
         color(RED BOLD UNDERLINE);
-        out("--- SEARCH NOT FOUND ---", 1);
+        printf("--- SEARCH NOT FOUND: %s ---", actual);
+        fflush(stdout);
         color(RESET);
     }
 
@@ -595,6 +599,9 @@ int main(int argc, char **argv) {
         size_t last_viewed_lines[BUFFERS_LIM];
     } buffers = {0}; { buffers.len = 0; }
 
+    if (paths.len >= BUFFERS_LIM)
+        err_wargs("Only %d files are supported", BUFFERS_LIM);
+
     for (size_t i = 0; i < paths.len; ++i) {
         const char *fp = paths.actual[i];
         const char *src = file_to_cstr(fp);
@@ -603,9 +610,6 @@ int main(int argc, char **argv) {
             perror("src is NULL");
             exit(EXIT_FAILURE);
         }
-
-        if (buffers.len >= BUFFERS_LIM)
-            err_wargs("Only %d files are supported", BUFFERS_LIM);
 
         Matrix matrix = init_matrix(src);
         buffers.matrices[buffers.len] = matrix;
@@ -637,7 +641,9 @@ int main(int argc, char **argv) {
                 else if (c == CTRL_V) handle_page_down(matrix, &line);
                 else if (c == CTRL_U) handle_page_up(matrix, &line);
             } break;
-            case USER_INPUT_TYPE_ALT: {} break;
+            case USER_INPUT_TYPE_ALT: {
+                if (c == 'v') handle_page_up(matrix, &line);
+            } break;
             case USER_INPUT_TYPE_ARROW: {
                 if (c == UP_ARROW)        handle_scroll_up(matrix, &line);
                 else if (c == DOWN_ARROW) handle_scroll_down(matrix, &line);
@@ -677,7 +683,6 @@ int main(int argc, char **argv) {
             case USER_INPUT_TYPE_UNKNOWN: {} break;
             default: {} break;
             }
-
         }
 
     switch_buffer:
