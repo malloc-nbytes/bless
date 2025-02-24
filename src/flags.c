@@ -5,9 +5,13 @@
 #include "flags.h"
 #include "bless-config.h"
 #include "utils.h"
+#include "config.h"
 
 void help(void) {
     printf("(MIT License) Copyright (c) 2025 malloc-nbytes\n\n");
+    printf("Compiler: %s\n", COMPILER_INFO);
+    printf("Installed to: %s\n", PREFIX);
+    printf("Bless Version: %s\n\n", VERSION);
 
     printf("Usage: bless [filepath...] [options...]\n");
     printf("Options:\n");
@@ -20,6 +24,11 @@ void help(void) {
     for (size_t i = 0; i < g_supported_editors_len; ++i)
         printf("    %s\n", g_supported_editors[i]);
     exit(EXIT_SUCCESS);
+}
+
+void version(void) {
+    printf("Bless version: v" VERSION "\n");
+    exit(0);
 }
 
 void handle_filter_flag(int *argc, char ***argv) {
@@ -47,6 +56,10 @@ void handle_1hy_flag(const char *arg, int *argc, char ***argv) {
             g_flags |= FLAG_TYPE_EDITOR;
             handle_editor_flag(argc, argv);
         }
+        else if (*it == FLAG_1HY_VERSION) {
+            g_flags |= FLAG_TYPE_VERSION;
+            version();
+        }
         else
             err_wargs("Unknown option: `%c`", *it);
         ++it;
@@ -67,6 +80,10 @@ void handle_2hy_flag(const char *arg, int *argc, char ***argv) {
     else if (!strcmp(arg, FLAG_2HY_EDITOR)) {
         g_flags |= FLAG_TYPE_EDITOR;
         handle_editor_flag(argc, argv);
+    }
+    else if (!strcmp(arg, FLAG_2HY_VERSION)) {
+        g_flags |= FLAG_TYPE_VERSION;
+        version();
     }
     else
         err_wargs("Unknown option: `%s`", arg);
