@@ -106,6 +106,14 @@
 #define DEF_WIN_HEIGHT 24
 
 static char *g_usage = "Bless internal usage buffer:\n\n"
+"__________.__                        \n"
+"\\______   \\  |   ____   ______ ______\n"
+" |    |  _/  | _/ __ \\ /  ___//  ___/\n"
+" |    |   \\  |_\\  ___/ \\___ \\ \\___ \\ \n"
+" |______  /____/\\___  >____  >____  >\n"
+"        \\/          \\/     \\/     \\/ \n"
+
+
     "Search\n"
     "    /           Enable search mode\n"
     "    n           Next occurrence\n"
@@ -307,6 +315,22 @@ const char *file_to_cstr(const char *filename) {
     buffer[length] = '\0';
 
     return buffer;
+}
+
+const char *get_line_from_cstr(const char *fp, size_t lineno) {
+    FILE *file = fopen(fp, "rb");
+    if (!file) {
+        perror("Error opening file");
+        return NULL;
+    }
+
+    char line[512];
+    size_t i = 0;
+    while (fgets(line, sizeof(line), file)) {
+        if (i == lineno) return strdup(line);
+        ++i;
+    }
+    return NULL;
 }
 
 Matrix init_matrix(const char *src, char *filepath) {
@@ -800,14 +824,37 @@ int open_saved_buffer(Matrix *matrix, size_t *last_off_line) {
 
     parse_config_file(&info_paths, &info_lines, &info_names, &info_len);
 
+    // Find the maximum length of name, path, and line
+    size_t max_name_len = 0, max_path_len = 0;
+    for (size_t i = 0; i < info_len; ++i) {
+        size_t name_len = strlen(info_names[i]);
+        size_t path_len = strlen(info_paths[i]);
+        if (name_len > max_name_len) max_name_len = name_len;
+        if (path_len > max_path_len) max_path_len = path_len;
+    }
+
+    // Add padding to align the columns
+    size_t adjusted_name_len = max_name_len + 2; // 2 for the brackets
+
+    printf("%-4s %-*s %-*s %-*s\n", "Index", adjusted_name_len, "Name", max_path_len, "Path", 10, "Line");
+    printf("----------------------------------------------------------------\n");
+
     for (size_t i = 0; i < info_len; ++i) {
         const char *path = info_paths[i];
         const size_t line = info_lines[i];
         const char *name = info_names[i];
 
-        color(GREEN BOLD);
-        printf("[%zu]: [%s] path: %s, line: %zu\n", i, name, path, line);
+        // Print the information with padding
+        color(BOLD);
+        printf("%-4zu [%-*s] %-*s %-*zu\n", i, adjusted_name_len, name, max_path_len, path, 10, line);
         color(RESET);
+        const char *preview = get_line_from_cstr(path, line);
+        if (preview) {
+            while (*preview && *preview == ' ') ++preview;
+            printf("└────── %s\n", preview);
+        }
+        else
+            printf("[no preview available]");
     }
     putchar('\n');
 
@@ -826,8 +873,8 @@ int open_saved_buffer(Matrix *matrix, size_t *last_off_line) {
 int main(int argc, char **argv) {
     init_config_file();
 
-    if (argc <= 1)
-        help();
+    /* if (argc <= 1) */
+    /*     help(); */
     ++argv, --argc;
 
     struct {
@@ -873,6 +920,14 @@ int main(int argc, char **argv) {
         Matrix matrix = init_matrix(src, paths.actual[i]);
         buffers.matrices[buffers.len] = matrix;
         buffers.last_viewed_lines[buffers.len++] = 0;
+    }
+
+    if (buffers.len == 0) {
+        char *iu_fp = "internal-usage";
+        Matrix usage_matrix = init_matrix(g_usage, iu_fp);
+        buffers.matrices[buffers.len] = usage_matrix;
+        buffers.last_viewed_lines[buffers.len++] = 0;
+        paths.actual[paths.len++] = iu_fp;
     }
 
     int b_idx = 0;
