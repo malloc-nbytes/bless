@@ -50,7 +50,7 @@
 #define CTRL_V 22 // Scroll down
 #define CTRL_W 23 // Save buffer
 #define CTRL_O 15 // Open buffer
-#define CTRL_I 9  // Open editor
+//#define CTRL_I 9  // Open editor
 
 #define UP_ARROW      'A'
 #define DOWN_ARROW    'B'
@@ -142,6 +142,7 @@ static char *g_usage = "Bless internal usage buffer:\n\n"
     "    D           Quit all buffers\n"
     "    C-w         Save a buffer\n"
     "    C-o         Open a saved buffer\n"
+    "    I           Open the current line in Vim"
     "    [UP]        Scroll up\n"
     "    [DOWN]      Scroll down\n"
     "    [LEFT]      Left buffer\n"
@@ -271,7 +272,6 @@ User_Input_Type get_user_input(char *c) {
         else if (*c == CTRL_V) return USER_INPUT_TYPE_CTRL;
         else if (*c == CTRL_W) return USER_INPUT_TYPE_CTRL;
         else if (*c == CTRL_O) return USER_INPUT_TYPE_CTRL;
-        else if (*c == CTRL_I) return USER_INPUT_TYPE_CTRL;
         else return USER_INPUT_TYPE_NORMAL;
     }
     return USER_INPUT_TYPE_UNKNOWN;
@@ -989,7 +989,6 @@ int main(int argc, char **argv) {
                 else if (c == CTRL_V) handle_page_down(matrix, &line);
                 else if (c == CTRL_U) handle_page_up(matrix, &line);
                 else if (c == CTRL_W) save_buffer(matrix, line);
-                else if (c == CTRL_I) launch_editor(matrix, line);
                 else if (c == CTRL_O) {
                     size_t left_off_line = 0;
                     Matrix new_matrix = {0};
@@ -1025,6 +1024,7 @@ int main(int argc, char **argv) {
                 else if (c == '/') handle_search(matrix, &line, line, NULL, 0);
                 else if (c == 'n') jump_to_last_searched_word(matrix, &line, 0);
                 else if (c == 'N') jump_to_last_searched_word(matrix, &line, 1);
+                else if (c == 'I') launch_editor(matrix, line);
                 else if (c == 'q') goto delete_buffer;
                 else if (c == 'd') goto delete_buffer;
                 else if (c == '?') {
