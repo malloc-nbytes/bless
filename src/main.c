@@ -32,6 +32,17 @@
 #define ORANGE        "\033[38;5;214m"
 #define BROWN         "\033[38;5;94m"
 
+// Backgrounds
+#define BG_YELLOW  "\033[43m"
+#define BG_GREEN   "\033[42m"
+#define BG_BLUE    "\033[44m"
+#define BG_RED     "\033[41m"
+#define BG_CYAN    "\033[46m"
+#define BG_MAGENTA "\033[45m"
+#define BG_WHITE   "\033[47m"
+#define BG_BLACK   "\033[40m"
+#define BG_GRAY    "\033[100m"
+
 // Effects
 #define UNDERLINE "\033[4m"
 #define BOLD      "\033[1m"
@@ -134,12 +145,13 @@ static char *g_usage = "Bless internal usage buffer:\n\n"
     "Emacs Keybindings\n"
     "    C-n         Scroll down\n"
     "    C-p         Scroll up\n"
-    "    C-l         Refresh\n"
+    "    C-l         Put the top line in the center of the screen\n"
     "    C-v         Page down\n"
     "    M-v         Page up\n"
     "Agnostic Keybindings\n"
     "    ?           Open this usage buffer\n"
     "    :           Special input mode\n"
+    "    L           Refresh buffer\n"
     "    O           Open file in place\n"
     "    q           Quit buffer\n"
     "    d           Quit buffer\n"
@@ -849,8 +861,9 @@ void display_tabs(const Matrix *const matrix,
     printf("[");
     for (size_t i = 0; i < paths_len; ++i) {
         if (!strcmp(paths[i], matrix->filepath)) {
-            color(GREEN);
+            color(BG_GREEN BLACK);
             printf(" %s:%zu ", paths[i], line);
+            color(RESET);
         }
         else {
             color(RESET BOLD UNDERLINE);
@@ -969,6 +982,22 @@ char *saved_buffer_contents_create() {
     return output;
 }
 
+void center_scrn(const Matrix *const matrix, size_t *line) {
+    /* if (!matrix || !line) return; // Guard against null pointers */
+    /* if (matrix->rows == 0) return; // No rows in the matrix */
+
+    /* if (*line < g_win_height / 2) { */
+    /*     *line = 0; // Prevent underflow */
+    /* } else if (*line > matrix->rows - 1) { */
+    /*     *line = matrix->rows - 1; // Prevent out-of-bounds access */
+    /* } else { */
+    /*     *line = *line - g_win_height / 2; */
+    /* } */
+
+    /* reset_scrn(); */
+    /* dump_matrix(matrix, *line, g_win_height); */
+}
+
 int main(int argc, char **argv) {
     g_saved_buffers.paths = s_malloc(sizeof(char *));
     g_saved_buffers.len = 0, g_saved_buffers.cap = 1;
@@ -1061,7 +1090,7 @@ int main(int argc, char **argv) {
                 else if (c == CTRL_V) handle_page_down(matrix, &line);
                 else if (c == CTRL_U) handle_page_up(matrix, &line);
                 else if (c == CTRL_W) save_buffer(matrix, line);
-                else if (c == CTRL_L) redraw_matrix(matrix, line);
+                else if (c == CTRL_L) handle_page_up(matrix, &line);
                 else if (c == CTRL_O) {
                     char *saved_buffer_contents = saved_buffer_contents_create();
                     Matrix open_buffer_matrix = init_matrix(saved_buffer_contents, g_ob_fp);
@@ -1112,8 +1141,11 @@ int main(int argc, char **argv) {
                 else if (c == 'n') jump_to_last_searched_word(matrix, &line, 0);
                 else if (c == 'N') jump_to_last_searched_word(matrix, &line, 1);
                 else if (c == 'I') launch_editor(matrix, line);
+                else if (c == 'L') redraw_matrix(matrix, line);
                 else if (c == 'O') {
                     char *new_filepath = get_user_input_in_mini_buffer("Path: ", NULL);
+                    if (!new_filepath)
+                        break;
                     Matrix new_matrix = init_matrix(file_to_cstr(new_filepath), new_filepath);
                     buffers.matrices[buffers.len] = new_matrix;
                     buffers.last_viewed_lines[buffers.len++] = 0;
