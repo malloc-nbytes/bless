@@ -1,5 +1,7 @@
 # bless
 
+## Introduction
+
 "Better" `less` is a part of the series that I am doing to rewrite
 some of the GNU coreutils. It aims to be the exact same as `less` except
 with some quality of life features.
@@ -13,3 +15,17 @@ usage buffer which has all the commands that you can perform. You can
 also do `O` to open a file from within `Bless`.
 
 To open your saved buffers, you can do `C-o` and to save a buffer do `C-w`.
+
+## Compiling
+
+Ensure you have `CMake >= 3.25.1`.
+
+```
+cd bless/
+mkdir build && cd build
+cmake -S .. -B .
+make
+sudo make install
+```
+
+To uninstall, just do `sudo make uninstall`.
