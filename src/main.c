@@ -569,7 +569,8 @@ int main(int argc, char **argv) {
     struct {
         char **actual;
         size_t len, cap;
-    } paths = {0}; {
+    } paths = {0};
+    {
         paths.actual = (char **)s_malloc(sizeof(char *));
         paths.len = 0, paths.cap = 1;
     };
@@ -590,9 +591,17 @@ int main(int argc, char **argv) {
     struct {
         Matrix *matrices;
         size_t len, cap;
-    } buffers = {0}; {
+        struct {
+            size_t *lines;
+            size_t len;
+            size_t cap;
+        } last_viewed_lines;
+    } buffers = {0};
+    {
         buffers.matrices = s_malloc(sizeof(Matrix));
         buffers.len = 0, buffers.cap = 1;
+        buffers.last_viewed_lines.lines = s_malloc(sizeof(size_t));
+        buffers.last_viewed_lines.len = 0, buffers.last_viewed_lines.cap = 1;
     };
 
     for (size_t i = 0; i < paths.len; ++i) {
@@ -606,6 +615,10 @@ int main(int argc, char **argv) {
 
         Matrix matrix = init_matrix(src);
         da_append(buffers.matrices, buffers.len, buffers.cap, Matrix *, matrix);
+        da_append(buffers.last_viewed_lines.lines,
+                  buffers.last_viewed_lines.len,
+                  buffers.last_viewed_lines.cap,
+                  size_t *, 0);
     }
 
     int b_idx = 0;
@@ -617,10 +630,10 @@ int main(int argc, char **argv) {
             continue;
         }
 
+        size_t line = buffers.last_viewed_lines.lines[b_idx];
         reset_scrn();
-        dump_matrix(matrix, 0, g_win_height);
+        dump_matrix(matrix, line, g_win_height);
 
-        size_t line = 0;
         while (1) {
             char c;
             User_Input_Type ty = get_user_input(&c);
@@ -638,10 +651,12 @@ int main(int argc, char **argv) {
                 if (c == UP_ARROW)        handle_scroll_up(matrix, &line);
                 else if (c == DOWN_ARROW) handle_scroll_down(matrix, &line);
                 else if (c == RIGHT_ARROW && b_idx < buffers.len-1) {
+                    buffers.last_viewed_lines.lines[b_idx] = line;
                     b_idx++;
                     goto switch_buffer;
                 }
                 else if (c == LEFT_ARROW && b_idx > 0) {
+                    buffers.last_viewed_lines.lines[b_idx] = line;
                     b_idx--;
                     goto switch_buffer;
                 }
