@@ -674,7 +674,7 @@ int main(int argc, char **argv) {
                 else if (c == '/') handle_search(matrix, &line, line, NULL, 0);
                 else if (c == 'n') jump_to_last_searched_word(matrix, &line, 0);
                 else if (c == 'N') jump_to_last_searched_word(matrix, &line, 1);
-                else if (c == 'q') assert(0);
+                else if (c == 'q') goto delete_buffer;
                 else if (c == 'Q') {
                     reset_scrn();
                     free(matrix->data);
@@ -694,6 +694,25 @@ int main(int argc, char **argv) {
             default: {} break;
             }
         }
+    delete_buffer:
+        free(matrix->data);
+
+        for (size_t j = b_idx; j < buffers.len - 1; ++j) {
+            buffers.matrices[j] = buffers.matrices[j + 1];
+            buffers.last_viewed_lines[j] = buffers.last_viewed_lines[j + 1];
+        }
+
+        --buffers.len;
+
+        if (b_idx >= buffers.len && buffers.len > 0)
+            --b_idx;
+
+        if (buffers.len == 0) {
+            reset_scrn();
+            goto end;
+        }
+
+        goto switch_buffer;
 
     switch_buffer:
         (void)0x0;
