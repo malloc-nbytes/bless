@@ -124,6 +124,7 @@ typedef enum {
 typedef struct {
     char *data;
     size_t rows, cols;
+    const char *filepath;
 } Matrix;
 
 int regex(const char *pattern, const char *s) {
@@ -244,7 +245,7 @@ const char *file_to_cstr(const char *filename) {
     return buffer;
 }
 
-Matrix init_matrix(const char *src) {
+Matrix init_matrix(const char *src, const char *filepath) {
     size_t rows = 1, cols = 0, current_cols = 0;
 
     for (size_t i = 0; src[i]; ++i) {
@@ -262,7 +263,8 @@ Matrix init_matrix(const char *src) {
     Matrix matrix = (Matrix) {
         .data = (char *)s_malloc(rows * cols * sizeof(char)),
         .rows = rows,
-        .cols = cols
+        .cols = cols,
+        .filepath = filepath,
     };
 
     if (!matrix.data) {
@@ -311,7 +313,15 @@ void clear_msg(void) {
 
 char *get_user_input_in_mini_buffer(char *prompt, char *last_input) {
     assert(prompt);
-    out(prompt, 0);
+
+    color(YELLOW BOLD UNDERLINE);
+    for (int i = 0; prompt[i]; ++i) {
+        if (prompt[i] == ' ' && !prompt[i+1])
+            color(RESET);
+        putchar(prompt[i]);
+    }
+    color(RESET);
+
 
     const size_t
         input_lim = 256,
@@ -325,8 +335,10 @@ char *get_user_input_in_mini_buffer(char *prompt, char *last_input) {
 
     if (last_input) {
         out(last_input, 0);
-        for (size_t i = 0; last_input[i]; ++i)
+        for (size_t i = 0; last_input[i]; ++i) {
             input[input_len++] = last_input[i];
+            ++backspace;
+        }
     }
 
     while (1) {
@@ -380,11 +392,15 @@ void dump_matrix(const Matrix *const matrix, size_t start_row, size_t end_row) {
 
     for (size_t i = start_row; i < end_row + start_row; ++i) {
         if (BIT_SET(g_flags, FLAG_TYPE_LINES))
-            printf("%zu: ", i);
+            printf("%zu: ", i+1);
         for (size_t j = 0; j < matrix->cols; ++j)
             putchar(MAT_AT(matrix->data, matrix->cols, i, j));
         putchar('\n');
     }
+
+    color(BOLD UNDERLINE GREEN);
+    printf("File: %s:%d", matrix->filepath, start_row+1);
+    color(RESET);
 }
 
 void reset_scrn(void) {
@@ -462,7 +478,7 @@ void handle_search(Matrix *matrix, size_t *line, size_t start_row, char *jump_to
     size_t actual_len = 0;
 
     if (!jump_to_next)
-        actual = get_user_input_in_mini_buffer("/", g_last_search);
+        actual = get_user_input_in_mini_buffer("[Search]: ", g_last_search);
     else
         actual = jump_to_next;
     actual_len = strlen(actual);
@@ -480,7 +496,7 @@ void handle_search(Matrix *matrix, size_t *line, size_t start_row, char *jump_to
         reset_scrn();
         dump_matrix(matrix, *line, g_win_height-1);
         color(RED BOLD UNDERLINE);
-        printf("--- SEARCH NOT FOUND: %s ---", actual);
+        printf(":[SEARCH NOT FOUND: %s]", actual);
         fflush(stdout);
         color(RESET);
     }
@@ -497,7 +513,7 @@ void jump_to_last_searched_word(Matrix *matrix, size_t *line, int reverse) {
         reset_scrn();
         dump_matrix(matrix, *line, g_win_height-1);
         color(RED BOLD UNDERLINE);
-        out("--- NO PREVIOUS SEARCH ---", 1);
+        out(":[NO PREVIOUS SEARCH]", 1);
         color(RESET);
         return;
     }
@@ -625,7 +641,7 @@ int main(int argc, char **argv) {
             exit(EXIT_FAILURE);
         }
 
-        Matrix matrix = init_matrix(src);
+        Matrix matrix = init_matrix(src, paths.actual[i]);
         buffers.matrices[buffers.len] = matrix;
         buffers.last_viewed_lines[buffers.len++] = 0;
     }
