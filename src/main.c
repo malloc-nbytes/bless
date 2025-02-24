@@ -12,6 +12,7 @@
 #include <limits.h>
 #include <sys/wait.h>
 #include <stdarg.h>
+#include <ctype.h>
 
 // Fourground Colors
 #define YELLOW        "\033[93m"
@@ -127,9 +128,10 @@ static char *g_usage = "Bless internal usage buffer:\n\n"
 " |    |  _/  | _/ __ \\ /  ___//  ___/\n"
 " |    |   \\  |_\\  ___/ \\___ \\ \\___ \\ \n"
 " |______  /____/\\___  >____  >____  >\n"
-"        \\/          \\/     \\/     \\/ \n"
-
-
+"        \\/          \\/     \\/     \\/ \n\n"
+    "Quick navigation:\n"
+    "C-n or j for scroll down\n"
+    "C-p or k for scroll up\n\n"
     "Search\n"
     "    /           Enable search mode\n"
     "    n           Next occurrence\n"
@@ -140,6 +142,7 @@ static char *g_usage = "Bless internal usage buffer:\n\n"
     "    k           Scroll up\n"
     "    h           Left buffer\n"
     "    l           Right buffer\n"
+    "    z           Put the top line in the center of the screen\n"
     "    C-d         Page down\n"
     "    C-u         Page up\n"
     "Emacs Keybindings\n"
@@ -223,6 +226,87 @@ void init_config_file(void) {
     }
 
     fclose(file);
+}
+
+void remove_entry_from_config_file(int idx) {
+    const char *home_dir = getenv("HOME");
+    if (!home_dir) {
+        fprintf(stderr, "HOME environment variable is not set.\n");
+        return;
+    }
+
+    size_t config_path_len = strlen(home_dir) + strlen("/.bless") + 1;
+    char *config_file_path = malloc(config_path_len);
+    if (!config_file_path) {
+        perror("Failed to allocate memory for config file path");
+        return;
+    }
+    snprintf(config_file_path, config_path_len, "%s/.bless", home_dir);
+
+    FILE *file = fopen(config_file_path, "r+");
+    if (!file) {
+        perror("Failed to open config file");
+        free(config_file_path);
+        return;
+    }
+
+    char **lines = NULL;
+    size_t lines_count = 0;
+    size_t lines_capacity = 10;
+
+    lines = malloc(sizeof(char *) * lines_capacity);
+    if (!lines) {
+        perror("Failed to allocate memory for lines");
+        fclose(file);
+        free(config_file_path);
+        return;
+    }
+
+    char *line = NULL;
+    size_t len = 0;
+    while (getline(&line, &len, file) != -1) {
+        // Skip leading newlines in the file
+        if (strlen(line) == 1 && line[0] == '\n') {
+            continue; // Skip empty lines (just newlines)
+        }
+
+        da_append(lines, lines_count, lines_capacity, char **, strdup(line));
+    }
+    free(line);
+
+    // Remove the entry at the specified index
+    if (idx < 0 || idx >= lines_count) {
+        fprintf(stderr, "Invalid index\n");
+        free(lines);
+        fclose(file);
+        free(config_file_path);
+        return;
+    }
+
+    free(lines[idx]);
+
+    // Shift the remaining lines down
+    for (size_t i = idx; i < lines_count - 1; ++i)
+        lines[i] = lines[i + 1];
+    lines_count--;
+
+    // Write the updated content back to the file
+    freopen(config_file_path, "w", file);
+    if (!file) {
+        perror("Failed to reopen config file for writing");
+        free(lines);
+        free(config_file_path);
+        return;
+    }
+
+    for (size_t i = 0; i < lines_count; ++i) {
+        fputs(lines[i], file);
+        free(lines[i]);
+    }
+
+    free(lines);
+    fclose(file);
+    free(config_file_path);
 }
 
 int regex(const char *pattern, const char *s) {
@@ -581,7 +665,7 @@ void help(void) {
     printf("Options:\n");
     printf("  %s,   -%c    Print this message\n", FLAG_2HY_HELP, FLAG_1HY_HELP);
     printf("  %s,   -%c    Just print the files out the files\n", FLAG_2HY_ONCE, FLAG_1HY_ONCE);
-    printf("  %s,  -%c    Show line numbers\n", FLAG_2HY_LINES, FLAG_1HY_LINES);
+    printf("  %s,  -%c    Show Bless line numbers (not file line numbers)\n", FLAG_2HY_LINES, FLAG_1HY_LINES);
     printf("  %s, -%c    Filter using regex\n", FLAG_2HY_FILTER, FLAG_1HY_FILTER);
     exit(EXIT_FAILURE);
 }
@@ -933,7 +1017,11 @@ char *saved_buffer_contents_create() {
 
     append_str(&output, &output_size, "\033[1;4m=== Saved Buffers ===\033[0m\n");
     append_str(&output, &output_size, "Use :<number> to select a buffer\n");
+    append_str(&output, &output_size, "Use :r<number> (no space) to remove a bookmark\n");
     append_str(&output, &output_size, "This buffer will close upon selection\n\n");
+    append_str(&output, &output_size, "You can populate this buffer by opening a file\n");
+    append_str(&output, &output_size, "in Bless and doing C-w or by opening one directly\n");
+    append_str(&output, &output_size, "with `O` and providing a path then doing C-w.\n\n");
 
     char **info_paths = malloc(sizeof(char *) * 10);
     size_t *info_lines = malloc(sizeof(size_t) * 10);
@@ -1066,7 +1154,10 @@ int main(int argc, char **argv) {
         Matrix *matrix = &buffers.matrices[b_idx];
 
         if (BIT_SET(g_flags, FLAG_TYPE_ONCE)) {
+            if (b_idx >= buffers.len)
+                break;
             dump_matrix(matrix, 0, matrix->rows);
+            ++b_idx;
             continue;
         }
 
@@ -1126,13 +1217,23 @@ int main(int argc, char **argv) {
                 else if (c == '/') handle_search(matrix, &line, line, NULL, 0);
                 else if (c == ':') {
                     char *inp = get_user_input_in_mini_buffer(": ", NULL);
-                    if (!strcmp(matrix->filepath, g_ob_fp)) {
+                    int is_open_buffer = !strcmp(matrix->filepath, g_ob_fp);
+                    if (is_open_buffer && inp && isdigit(inp[0])) {
                         int idx = atoi(inp);
                         Matrix selected_matrix = init_matrix(file_to_cstr(g_saved_buffers.paths[idx]), g_saved_buffers.paths[idx]);
                         buffers.matrices[buffers.len] = selected_matrix;
                         buffers.last_viewed_lines[buffers.len++] = g_saved_buffers.last_saved_lines[idx];
                         paths.actual[paths.len++] = selected_matrix.filepath;
                         goto delete_buffer;
+                    } else if (is_open_buffer && inp && inp[0] == 'r') {
+                        int idx = atoi(inp+1);
+                        remove_entry_from_config_file(idx);
+                        free(matrix->data);
+                        char *saved_buffer_contents = saved_buffer_contents_create();
+                        *matrix = init_matrix(saved_buffer_contents, g_ob_fp);
+                        goto switch_buffer;
+                    } else if (!inp) {
+                        break;
                     }
                     else {
                         assert(0 && "unimplemented");
@@ -1142,10 +1243,12 @@ int main(int argc, char **argv) {
                 else if (c == 'N') jump_to_last_searched_word(matrix, &line, 1);
                 else if (c == 'I') launch_editor(matrix, line);
                 else if (c == 'L') redraw_matrix(matrix, line);
+                else if (c == 'z') handle_page_up(matrix, &line);
                 else if (c == 'O') {
                     char *new_filepath = get_user_input_in_mini_buffer("Path: ", NULL);
                     if (!new_filepath)
                         break;
+                    new_filepath = expand_tilde(new_filepath);
                     Matrix new_matrix = init_matrix(file_to_cstr(new_filepath), new_filepath);
                     buffers.matrices[buffers.len] = new_matrix;
                     buffers.last_viewed_lines[buffers.len++] = 0;
