@@ -140,6 +140,7 @@ static char *g_usage = "Bless internal usage buffer:\n\n"
     "Agnostic Keybindings\n"
     "    ?           Open this usage buffer\n"
     "    :           Special input mode\n"
+    "    O           Open file in place\n"
     "    q           Quit buffer\n"
     "    d           Quit buffer\n"
     "    Q           Quit all buffers\n"
@@ -307,8 +308,39 @@ void init_term(void) {
     tcsetattr(STDIN_FILENO, TCSANOW, &raw);
 }
 
+char *expand_tilde(const char *path) {
+    if (path[0] != '~') {
+        return strdup(path); // No tilde, return a copy of the original string
+    }
+
+    const char *home = getenv("HOME");
+    if (!home) {
+        fprintf(stderr, "Error: HOME environment variable not set.\n");
+        return NULL;
+    }
+
+    size_t home_len = strlen(home);
+    size_t path_len = strlen(path);
+
+    char *expanded_path = malloc(home_len + path_len); // +1 is already included since `~` is replaced
+    if (!expanded_path) {
+        perror("Failed to allocate memory");
+        return NULL;
+    }
+
+    strcpy(expanded_path, home);
+    strcat(expanded_path, path + 1); // Skip the `~`
+
+    return expanded_path;
+}
+
 const char *file_to_cstr(const char *filename) {
-    FILE *file = fopen(filename, "rb");
+    char *expanded_path = expand_tilde(filename);
+    if (!expanded_path) return NULL;
+
+    FILE *file = fopen(expanded_path, "rb");
+    free(expanded_path); // Don't forget to free after use!
+
     if (!file) {
         perror("Failed to open file");
         return NULL;
@@ -318,7 +350,7 @@ const char *file_to_cstr(const char *filename) {
     long length = ftell(file);
     rewind(file);
 
-    char *buffer = (char *)s_malloc(length + 1);
+    char *buffer = (char *)malloc(length + 1);
     if (!buffer) {
         perror("Failed to allocate memory");
         fclose(file);
@@ -329,7 +361,6 @@ const char *file_to_cstr(const char *filename) {
     fclose(file);
 
     buffer[length] = '\0';
-
     return buffer;
 }
 
@@ -1081,6 +1112,15 @@ int main(int argc, char **argv) {
                 else if (c == 'n') jump_to_last_searched_word(matrix, &line, 0);
                 else if (c == 'N') jump_to_last_searched_word(matrix, &line, 1);
                 else if (c == 'I') launch_editor(matrix, line);
+                else if (c == 'O') {
+                    char *new_filepath = get_user_input_in_mini_buffer("Path: ", NULL);
+                    Matrix new_matrix = init_matrix(file_to_cstr(new_filepath), new_filepath);
+                    buffers.matrices[buffers.len] = new_matrix;
+                    buffers.last_viewed_lines[buffers.len++] = 0;
+                    b_idx = buffers.len-1;
+                    paths.actual[paths.len++] = new_filepath;
+                    goto switch_buffer;
+                }
                 else if (c == 'q') goto delete_buffer;
                 else if (c == 'd') goto delete_buffer;
                 else if (c == '?') {
