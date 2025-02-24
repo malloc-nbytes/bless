@@ -273,24 +273,34 @@ Matrix init_matrix(const char *src) {
     memset(matrix.data, ' ', rows * cols);
 
     size_t row = 0, col = 0;
-    char buf[1024] = {0};
-    size_t buf_len = 0;
+
+    struct {
+        char *chars;
+        size_t len, cap;
+    } buf = {0}; {
+        buf.chars = (char *)s_malloc(80);
+        buf.cap = 80, buf.len = 0;
+        memset(buf.chars, '\0', buf.cap);
+    }
+
     for (size_t i = 0; src[i]; ++i) {
         if (src[i] == '\n') {
-            if (g_filter_pattern && !regex(g_filter_pattern, buf))
+            if (g_filter_pattern && !regex(g_filter_pattern, buf.chars))
                 goto not_match;
-            for (size_t j = 0; j < buf_len; ++j)
-                matrix.data[row * cols + j] = buf[j];
+            for (size_t j = 0; j < buf.len; ++j)
+                matrix.data[row * cols + j] = buf.chars[j];
             row++;
         not_match:
-            memset(buf, '\0', 1024);
-            buf_len = 0;
+            memset(buf.chars, '\0', buf.len);
+            buf.len = 0;
         }
         else
-            buf[buf_len++] = src[i];
+            da_append(buf.chars, buf.len, buf.cap, char *, src[i]);
     }
 
     matrix.rows = row;
+
+    free(buf.chars);
 
     return matrix;
 }
@@ -305,7 +315,7 @@ char *get_user_input_in_mini_buffer(char *prompt, char *last_input) {
 
     size_t backspace = prompt_len;
 
-    char *input = s_malloc(input_lim);
+    char *input = (char *)s_malloc(input_lim);
     (void)memset(input, '\0', input_lim);
     size_t input_len = 0;
 
@@ -338,7 +348,7 @@ char *get_user_input_in_mini_buffer(char *prompt, char *last_input) {
             }
             else {
                 if (input_len >= input_lim)
-                    err_wargs("input length must be < %d", input_lim);
+                    err_wargs("input length must be < %zu", input_lim);
                 input[input_len++] = c;
                 ++backspace;
             }
@@ -670,11 +680,11 @@ int main(int argc, char **argv) {
                     free(matrix->data);
                     goto end;
                 }
-                else if (c == 'l' && b_idx < buffers.len-1) {
+                else if ((c == 'l' || c == 'K') && b_idx < buffers.len-1) {
                     buffers.last_viewed_lines[b_idx++] = line;
                     goto switch_buffer;
                 }
-                else if (c == 'h' && b_idx > 0) {
+                else if ((c == 'h' || c == 'J') && b_idx > 0) {
                     buffers.last_viewed_lines[b_idx--] = line;
                     goto switch_buffer;
                 }
