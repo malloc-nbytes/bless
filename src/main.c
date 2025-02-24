@@ -305,6 +305,10 @@ Matrix init_matrix(const char *src) {
     return matrix;
 }
 
+void clear_msg(void) {
+    out("\r\033[K", 0);
+}
+
 char *get_user_input_in_mini_buffer(char *prompt, char *last_input) {
     assert(prompt);
     out(prompt, 0);
@@ -361,7 +365,7 @@ char *get_user_input_in_mini_buffer(char *prompt, char *last_input) {
     }
 
  ok:
-    out("\r\033[K", 1);
+    clear_msg();
     return input;
 }
 
@@ -642,6 +646,8 @@ int main(int argc, char **argv) {
         while (1) {
             char c;
             User_Input_Type ty = get_user_input(&c);
+
+            clear_msg();
 
             switch (ty) {
             case USER_INPUT_TYPE_CTRL: {
