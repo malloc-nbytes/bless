@@ -99,6 +99,35 @@
 #define DEF_WIN_WIDTH 80
 #define DEF_WIN_HEIGHT 24
 
+static char *g_usage = "Bless internal usage buffer:\n\n"
+    "Search\n"
+    "    /           Enable search mode\n"
+    "    n           Next occurrence\n"
+    "    N           Previous occurrence\n"
+    "    C-g         Cancel search\n"
+    "Vim Keybindings:\n"
+    "    j           Scroll down\n"
+    "    k           Scroll up\n"
+    "    h           Left buffer\n"
+    "    l           Right buffer\n"
+    "    C-d         Page down\n"
+    "    C-u         Page up\n"
+    "Emacs Keybindings\n"
+    "    C-n         Scroll down\n"
+    "    C-p         Scroll up\n"
+    "    C-l         Refresh\n"
+    "    C-v         Page down\n"
+    "    M-v         Page up\n"
+    "Agnostic Keybindings\n"
+    "    ?           Open this usage buffer\n"
+    "    q           Quit buffer\n"
+    "    Q           Quit all buffers\n"
+    "    [UP]        Scroll up\n"
+    "    [DOWN]      Scroll down\n"
+    "    [LEFT]      Left buffer\n"
+    "    [RIGHT]     Right buffer\n"
+    "";
+
 static int g_win_width = DEF_WIN_WIDTH;
 static int g_win_height = DEF_WIN_HEIGHT;
 static struct termios g_old_termios;
@@ -398,9 +427,9 @@ void dump_matrix(const Matrix *const matrix, size_t start_row, size_t end_row) {
         putchar('\n');
     }
 
-    color(BOLD UNDERLINE GREEN);
-    printf("File: %s:%d", matrix->filepath, start_row+1);
-    color(RESET);
+    /* color(BOLD UNDERLINE GREEN); */
+    /* printf("File: %s:%d", matrix->filepath, start_row+1); */
+    /* color(RESET); */
 }
 
 void reset_scrn(void) {
@@ -659,6 +688,11 @@ int main(int argc, char **argv) {
         reset_scrn();
         dump_matrix(matrix, line, g_win_height);
 
+        color(BOLD UNDERLINE GREEN);
+        printf("File: %s:%d", matrix->filepath, line+1);
+        color(RESET);
+        fflush(stdout);
+
         while (1) {
             char c;
             User_Input_Type ty = get_user_input(&c);
@@ -697,6 +731,13 @@ int main(int argc, char **argv) {
                 else if (c == 'n') jump_to_last_searched_word(matrix, &line, 0);
                 else if (c == 'N') jump_to_last_searched_word(matrix, &line, 1);
                 else if (c == 'q') goto delete_buffer;
+                else if (c == '?') {
+                    Matrix usage_matrix = init_matrix(g_usage, "internal-usage");
+                    buffers.matrices[buffers.len] = usage_matrix;
+                    buffers.last_viewed_lines[buffers.len++] = 0;
+                    b_idx = buffers.len-1;
+                    goto switch_buffer;
+                }
                 else if (c == 'Q') {
                     reset_scrn();
                     free(matrix->data);
@@ -715,7 +756,13 @@ int main(int argc, char **argv) {
             case USER_INPUT_TYPE_UNKNOWN: {} break;
             default: {} break;
             }
+
+            color(BOLD UNDERLINE GREEN);
+            printf("File: %s:%d", matrix->filepath, line+1);
+            color(RESET);
+            fflush(stdout);
         }
+
     delete_buffer:
         free(matrix->data);
 
