@@ -121,7 +121,9 @@ static char *g_usage = "Bless internal usage buffer:\n\n"
     "Agnostic Keybindings\n"
     "    ?           Open this usage buffer\n"
     "    q           Quit buffer\n"
+    "    d           Quit buffer\n"
     "    Q           Quit all buffers\n"
+    "    D           Quit all buffers\n"
     "    [UP]        Scroll up\n"
     "    [DOWN]      Scroll down\n"
     "    [LEFT]      Left buffer\n"
@@ -525,7 +527,7 @@ void handle_search(Matrix *matrix, size_t *line, size_t start_row, char *jump_to
         reset_scrn();
         dump_matrix(matrix, *line, g_win_height-1);
         color(RED BOLD UNDERLINE);
-        printf(":[SEARCH NOT FOUND: %s]", actual);
+        printf("[SEARCH NOT FOUND: %s]\n", actual);
         fflush(stdout);
         color(RESET);
     }
@@ -542,7 +544,7 @@ void jump_to_last_searched_word(Matrix *matrix, size_t *line, int reverse) {
         reset_scrn();
         dump_matrix(matrix, *line, g_win_height-1);
         color(RED BOLD UNDERLINE);
-        out(":[NO PREVIOUS SEARCH]", 1);
+        out("[NO PREVIOUS SEARCH]", 1);
         color(RESET);
         return;
     }
@@ -751,6 +753,7 @@ int main(int argc, char **argv) {
                 else if (c == 'n') jump_to_last_searched_word(matrix, &line, 0);
                 else if (c == 'N') jump_to_last_searched_word(matrix, &line, 1);
                 else if (c == 'q') goto delete_buffer;
+                else if (c == 'd') goto delete_buffer;
                 else if (c == '?') {
                     char *iu_fp = "internal-usage";
                     Matrix usage_matrix = init_matrix(g_usage, iu_fp);
@@ -760,7 +763,7 @@ int main(int argc, char **argv) {
                     paths.actual[paths.len++] = iu_fp;
                     goto switch_buffer;
                 }
-                else if (c == 'Q') {
+                else if (c == 'Q' || c == 'D') {
                     reset_scrn();
                     free(matrix->data);
                     goto end;
