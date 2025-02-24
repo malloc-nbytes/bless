@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <limits.h>
+#include <sys/wait.h>
 
 // Fourground Colors
 #define YELLOW        "\033[93m"
@@ -49,6 +50,7 @@
 #define CTRL_V 22 // Scroll down
 #define CTRL_W 23 // Save buffer
 #define CTRL_O 15 // Open buffer
+#define CTRL_I 9  // Open editor
 
 #define UP_ARROW      'A'
 #define DOWN_ARROW    'B'
@@ -269,6 +271,7 @@ User_Input_Type get_user_input(char *c) {
         else if (*c == CTRL_V) return USER_INPUT_TYPE_CTRL;
         else if (*c == CTRL_W) return USER_INPUT_TYPE_CTRL;
         else if (*c == CTRL_O) return USER_INPUT_TYPE_CTRL;
+        else if (*c == CTRL_I) return USER_INPUT_TYPE_CTRL;
         else return USER_INPUT_TYPE_NORMAL;
     }
     return USER_INPUT_TYPE_UNKNOWN;
@@ -808,6 +811,33 @@ void display_tabs(const Matrix *const matrix,
 
 }
 
+void launch_editor(Matrix *matrix, size_t line) {
+    if (!matrix || !matrix->filepath) {
+        fprintf(stderr, "Error: Invalid matrix or filepath\n");
+        return;
+    }
+
+    pid_t pid = fork();
+
+    if (pid == 0) { // Child process
+        char line_arg[32];
+        snprintf(line_arg, sizeof(line_arg), "+%zu", line+1);
+
+        execlp("vim", "vim", line_arg, matrix->filepath, NULL);
+        perror("execlp failed"); // If execlp fails
+        _exit(1);
+    } else if (pid > 0) { // Parent process
+        wait(NULL); // Wait for Vim to exit
+    } else {
+        perror("fork failed");
+    }
+
+    free(matrix->data);
+    *matrix = init_matrix(file_to_cstr(matrix->filepath), matrix->filepath);
+    reset_scrn();
+    dump_matrix(matrix, line, g_win_height);
+}
+
 int open_saved_buffer(Matrix *matrix, size_t *last_off_line) {
     reset_scrn();
 
@@ -959,6 +989,7 @@ int main(int argc, char **argv) {
                 else if (c == CTRL_V) handle_page_down(matrix, &line);
                 else if (c == CTRL_U) handle_page_up(matrix, &line);
                 else if (c == CTRL_W) save_buffer(matrix, line);
+                else if (c == CTRL_I) launch_editor(matrix, line);
                 else if (c == CTRL_O) {
                     size_t left_off_line = 0;
                     Matrix new_matrix = {0};
