@@ -843,6 +843,10 @@ void handle_page_down(Matrix *matrix, size_t *line) {
 }
 
 void save_buffer(Matrix *matrix, size_t line) {
+    if (!strcmp(matrix->filepath, g_ob_fp) || !strcmp(matrix->filepath, g_iu_fp)) {
+        err_msg_wmatrix_wargs(matrix, line, "Canot save buffer `%s` as it is internal", matrix->filepath);
+        return;
+    }
     char *name = get_user_input_in_mini_buffer("Save as: ", NULL);
     if (!name) return;
 
