@@ -1,0 +1,8 @@
+#ifndef CONFIG_H_IN
+#define CONFIG_H_IN
+
+#define PREFIX "@CMAKE_INSTALL_PREFIX@"
+#define VERSION "@PROJECT_VERSION@"
+#define COMPILER_INFO "@COMPILER_INFO@"
+
+#endif // CONFIG_H_IN

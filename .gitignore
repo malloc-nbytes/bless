@@ -2,3 +2,5 @@ main
 bless
 *.in
 build
+!cmake_uninstall.cmake.in
+!config.h.in
