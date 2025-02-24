@@ -7,6 +7,9 @@
 #include <termios.h>
 #include <stdint.h>
 #include <regex.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <limits.h>
 
 // Fourground Colors
 #define YELLOW        "\033[93m"
@@ -44,6 +47,7 @@
 #define CTRL_P 16 // Scroll up
 #define CTRL_G 7  // Cancel
 #define CTRL_V 22 // Scroll down
+#define CTRL_W 23 // Save buffer
 #define UP_ARROW      'A'
 #define DOWN_ARROW    'B'
 #define RIGHT_ARROW   'C'
@@ -130,7 +134,7 @@ static char *g_usage = "Bless internal usage buffer:\n\n"
     "    [RIGHT]     Right buffer\n"
     "";
 
-static int g_win_width = DEF_WIN_WIDTH;
+static int g_win_width  = DEF_WIN_WIDTH;
 static int g_win_height = DEF_WIN_HEIGHT;
 static struct termios g_old_termios;
 static char *g_last_search = NULL;
@@ -157,6 +161,29 @@ typedef struct {
     size_t rows, cols;
     const char *filepath;
 } Matrix;
+
+void init_config_file(void) {
+    const char *home = getenv("HOME");
+    if (!home) {
+        fprintf(stderr, "[Warning]: HOME environment variable not set.\n");
+        return;
+    }
+
+    char path[512];
+    snprintf(path, sizeof(path), "%s/.bless", home);
+
+    if (access(path, F_OK) == 0) {
+        return; // File exists, do nothing
+    }
+
+    FILE *file = fopen(path, "w");
+    if (!file) {
+        fprintf(stderr, "[Warning] Could not create config file: %s\n", path);
+        return;
+    }
+
+    fclose(file);
+}
 
 int regex(const char *pattern, const char *s) {
     regex_t regex;
@@ -228,6 +255,7 @@ User_Input_Type get_user_input(char *c) {
         else if (*c == CTRL_D) return USER_INPUT_TYPE_CTRL;
         else if (*c == CTRL_U) return USER_INPUT_TYPE_CTRL;
         else if (*c == CTRL_V) return USER_INPUT_TYPE_CTRL;
+        else if (*c == CTRL_W) return USER_INPUT_TYPE_CTRL;
         else return USER_INPUT_TYPE_NORMAL;
     }
     return USER_INPUT_TYPE_UNKNOWN;
@@ -378,7 +406,7 @@ char *get_user_input_in_mini_buffer(char *prompt, char *last_input) {
         switch (ty) {
         case USER_INPUT_TYPE_CTRL: {
             if (c == CTRL_G) {
-                input_len = 0;
+                input = NULL;
                 goto ok;
             }
         } break;
@@ -428,10 +456,6 @@ void dump_matrix(const Matrix *const matrix, size_t start_row, size_t end_row) {
             putchar(MAT_AT(matrix->data, matrix->cols, i, j));
         putchar('\n');
     }
-
-    /* color(BOLD UNDERLINE GREEN); */
-    /* printf("File: %s:%d", matrix->filepath, start_row+1); */
-    /* color(RESET); */
 }
 
 void reset_scrn(void) {
@@ -512,6 +536,9 @@ void handle_search(Matrix *matrix, size_t *line, size_t start_row, char *jump_to
         actual = get_user_input_in_mini_buffer("[Search]: ", g_last_search);
     else
         actual = jump_to_next;
+
+    if (!actual) return;
+
     actual_len = strlen(actual);
 
     if (actual_len == 0)
@@ -575,6 +602,43 @@ void handle_page_down(Matrix *matrix, size_t *line) {
             *line = max_start;
         dump_matrix(matrix, *line, g_win_height);
     }
+}
+
+void save_buffer(Matrix *matrix, size_t line) {
+    char *name = get_user_input_in_mini_buffer("Save as: ", NULL);
+    if (!name) return;
+
+    char cwd[PATH_MAX];
+    if (getcwd(cwd, sizeof(cwd)) == NULL) {
+        perror("Error getting current directory");
+        return;
+    }
+    char fullpath[PATH_MAX];
+    snprintf(fullpath, sizeof(fullpath), "%s/%s", cwd, matrix->filepath);
+
+    const char *home = getenv("HOME");
+    if (!home) {
+        fprintf(stderr, "[Warning]: HOME environment variable not set.\n");
+        return;
+    }
+
+    char bless[512];
+    snprintf(bless, sizeof(bless), "%s/.bless", home);
+
+    FILE *file = fopen(bless, "a");
+    if (!file) {
+        perror("Error opening file");
+        return;
+    }
+
+    char text[512];
+    snprintf(text, sizeof(text), "%s:%zu:%s\n", fullpath, line, name);
+
+    if (fputs(text, file) == EOF) {
+        perror("Error writing to file");
+    }
+
+    fclose(file);
 }
 
 void redraw_matrix(Matrix *matrix, size_t line) {
@@ -651,6 +715,8 @@ void display_tabs(const Matrix *const matrix,
 }
 
 int main(int argc, char **argv) {
+    init_config_file();
+
     if (argc <= 1)
         help();
     ++argv, --argc;
@@ -728,6 +794,7 @@ int main(int argc, char **argv) {
                 else if (c == CTRL_D) handle_page_down(matrix, &line);
                 else if (c == CTRL_V) handle_page_down(matrix, &line);
                 else if (c == CTRL_U) handle_page_up(matrix, &line);
+                else if (c == CTRL_W) save_buffer(matrix, line);
             } break;
             case USER_INPUT_TYPE_ALT: {
                 if (c == 'v') handle_page_up(matrix, &line);
