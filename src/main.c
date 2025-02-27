@@ -59,6 +59,7 @@ char *g_usage = "Bless internal usage buffer:\n\n"
     "    C-p             Scroll up\n"
     "    C-l             Put the top line in the center of the screen\n"
     "    C-v             Page down\n"
+    "    C-s             Search\n"
     "    M-v             Page up\n"
     "Agnostic Keybindings\n"
     "    ?               Open this usage buffer\n"
@@ -222,6 +223,7 @@ void init_term(void) {
     tcgetattr(STDIN_FILENO, &g_old_termios);
     struct termios raw = g_old_termios;
     raw.c_lflag &= ~(ECHO | ICANON);
+    raw.c_iflag &= ~IXON;
     tcsetattr(STDIN_FILENO, TCSANOW, &raw);
 }
 
@@ -485,6 +487,8 @@ int main(int argc, char **argv) {
 
             clear_msg();
 
+            int found = 0;
+
             switch (ty) {
             case USER_INPUT_TYPE_CTRL: {
                 if (c == CTRL_N)      handle_scroll_down(matrix, &line, column);
@@ -498,6 +502,7 @@ int main(int argc, char **argv) {
                 else if (c == CTRL_B) handle_scroll_left(matrix, line, &column);
                 else if (c == CTRL_A) handle_jump_to_beginning_of_line(matrix, line, &column);
                 else if (c == CTRL_E) handle_jump_to_end_of_line(matrix, line, &column);
+                else if (c == CTRL_S) found = handle_search(matrix, &line, line, &column, NULL, 0);
                 else if (c == CTRL_O) {
                     char *saved_buffer_contents = saved_buffer_contents_create();
                     Matrix open_buffer_matrix = init_matrix(saved_buffer_contents, g_ob_fp);
@@ -534,7 +539,7 @@ int main(int argc, char **argv) {
                 else if (c == 'j') handle_scroll_down(matrix, &line, column);
                 else if (c == 'g') handle_jump_to_top(matrix, &line, column);
                 else if (c == 'G') handle_jump_to_bottom(matrix, &line, column);
-                else if (c == '/') handle_search(matrix, &line, line, &column, NULL, 0);
+                else if (c == '/') found = handle_search(matrix, &line, line, &column, NULL, 0);
                 else if (c == '0') handle_jump_to_beginning_of_line(matrix, line, &column);
                 else if (c == '$') handle_jump_to_end_of_line(matrix, line, &column);
                 else if (c == ':') {
@@ -565,8 +570,8 @@ int main(int argc, char **argv) {
                         err_msg_wmatrix_wargs(matrix, line, column, "Not a valid special input command: `%s`", inp);
                     }
                 }
-                else if (c == 'n') jump_to_last_searched_word(matrix, &line, &column, 0);
-                else if (c == 'N') jump_to_last_searched_word(matrix, &line, &column, 1);
+                else if (c == 'n') found = jump_to_last_searched_word(matrix, &line, &column, 0);
+                else if (c == 'N') found = jump_to_last_searched_word(matrix, &line, &column, 1);
                 else if (c == 'I') launch_editor(matrix, line, column);
                 else if (c == 'L') redraw_matrix(matrix, line, column);
                 else if (c == 'z') handle_page_up(matrix, &line, column);
@@ -613,6 +618,12 @@ int main(int argc, char **argv) {
             default: {} break;
             }
 
+            if (found) {
+                color(BOLD GREEN);
+                printf(":search [N] next [n] previous\n");
+                color(RESET);
+                fflush(stdout);
+            }
             display_tabs(matrix, paths.actual, paths.len, buffers.last_viewed_lines, line);
         }
 

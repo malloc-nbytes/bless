@@ -14,6 +14,7 @@
 #define CTRL_B 2 // Scroll left
 #define CTRL_A 1 // Jump to beginning of line
 #define CTRL_E 5 // Jump to end of line
+#define CTRL_S 19 // Search
 //#define CTRL_I 9  // Open editor
 
 #define UP_ARROW      'A'

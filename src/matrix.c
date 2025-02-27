@@ -266,7 +266,7 @@ int find_word_in_matrix(Matrix *matrix, size_t start_row, size_t *column, char *
     return found ? found - 1 : 0;
 }
 
-void handle_search(Matrix *matrix, size_t *line, size_t start_row, size_t *column, char *jump_to_next/*optional*/, int reverse) {
+int handle_search(Matrix *matrix, size_t *line, size_t start_row, size_t *column, char *jump_to_next/*optional*/, int reverse) {
     char *actual = NULL;
     size_t actual_len = 0;
 
@@ -275,12 +275,11 @@ void handle_search(Matrix *matrix, size_t *line, size_t start_row, size_t *colum
     else
         actual = jump_to_next;
 
-    if (!actual) return;
+    if (!actual) return 0;
 
     actual_len = strlen(actual);
 
-    if (actual_len == 0)
-        return;
+    if (actual_len == 0) return 0;
 
     size_t found = find_word_in_matrix(matrix, start_row, column, actual, actual_len, reverse);
 
@@ -290,7 +289,7 @@ void handle_search(Matrix *matrix, size_t *line, size_t start_row, size_t *colum
     }
     else {
         err_msg_wmatrix_wargs(matrix, *line, *column, "[SEARCH NOT FOUND: %s]", actual);
-        return;
+        return 0;
     }
 
     if (!jump_to_next) {
@@ -298,15 +297,17 @@ void handle_search(Matrix *matrix, size_t *line, size_t start_row, size_t *colum
             free(g_last_search);
         g_last_search = actual;
     }
+
+    return 1;
 }
 
-void jump_to_last_searched_word(Matrix *matrix, size_t *line, size_t *column, int reverse) {
+int jump_to_last_searched_word(Matrix *matrix, size_t *line, size_t *column, int reverse) {
     if (!g_last_search) {
         err_msg_wmatrix(matrix, *line, *column, "[NO PREVIOUS SEARCH]");
-        return;
+        return 0;
     }
-    if (!reverse) handle_search(matrix, line, *line+1, column, g_last_search, 0);
-    else          handle_search(matrix, line, *line-1, column, g_last_search, 1);
+    if (!reverse) return handle_search(matrix, line, *line+1, column, g_last_search, 0);
+    return handle_search(matrix, line, *line-1, column, g_last_search, 1);
 }
 
 void handle_page_up(Matrix *matrix, size_t *line, size_t column) {

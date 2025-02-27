@@ -48,7 +48,7 @@ User_Input_Type get_user_input(char *c) {
                  *c == CTRL_D || *c == CTRL_U || *c == CTRL_V ||
                  *c == CTRL_W || *c == CTRL_O || *c == CTRL_L ||
                  *c == CTRL_F || *c == CTRL_B || *c == CTRL_A ||
-                 *c == CTRL_E) {
+                 *c == CTRL_E || *c == CTRL_S) {
             return USER_INPUT_TYPE_CTRL;
         }
         else return USER_INPUT_TYPE_NORMAL;
