@@ -43,9 +43,9 @@ void handle_scroll_down(const Matrix *const matrix, size_t *const line, size_t c
 void handle_scroll_up(const Matrix *const matrix, size_t *const line, size_t column);
 void handle_jump_to_top(const Matrix *const matrix, size_t *const line, size_t column);
 void handle_jump_to_bottom(const Matrix *const matrix, size_t *const line, size_t column);
-int find_word_in_matrix(Matrix *matrix, size_t start_row, char *word, size_t word_len, int reverse);
-void handle_search(Matrix *matrix, size_t *line, size_t start_row, size_t column, char *jump_to_next/*optional*/, int reverse);
-void jump_to_last_searched_word(Matrix *matrix, size_t *line, size_t column, int reverse);
+int find_word_in_matrix(Matrix *matrix, size_t start_row, size_t *column, char *word, size_t word_len, int reverse);
+void handle_search(Matrix *matrix, size_t *line, size_t start_row, size_t *column, char *jump_to_next/*optional*/, int reverse);
+void jump_to_last_searched_word(Matrix *matrix, size_t *line, size_t *column, int reverse);
 void handle_page_up(Matrix *matrix, size_t *line, size_t column);
 void handle_page_down(Matrix *matrix, size_t *line, size_t column);
 void handle_jump_to_beginning_of_line(Matrix *matrix, size_t line, size_t *column);

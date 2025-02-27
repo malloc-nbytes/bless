@@ -534,7 +534,7 @@ int main(int argc, char **argv) {
                 else if (c == 'j') handle_scroll_down(matrix, &line, column);
                 else if (c == 'g') handle_jump_to_top(matrix, &line, column);
                 else if (c == 'G') handle_jump_to_bottom(matrix, &line, column);
-                else if (c == '/') handle_search(matrix, &line, line, column, NULL, 0);
+                else if (c == '/') handle_search(matrix, &line, line, &column, NULL, 0);
                 else if (c == '0') handle_jump_to_beginning_of_line(matrix, line, &column);
                 else if (c == '$') handle_jump_to_end_of_line(matrix, line, &column);
                 else if (c == ':') {
@@ -565,8 +565,8 @@ int main(int argc, char **argv) {
                         err_msg_wmatrix_wargs(matrix, line, column, "Not a valid special input command: `%s`", inp);
                     }
                 }
-                else if (c == 'n') jump_to_last_searched_word(matrix, &line, column, 0);
-                else if (c == 'N') jump_to_last_searched_word(matrix, &line, column, 1);
+                else if (c == 'n') jump_to_last_searched_word(matrix, &line, &column, 0);
+                else if (c == 'N') jump_to_last_searched_word(matrix, &line, &column, 1);
                 else if (c == 'I') launch_editor(matrix, line, column);
                 else if (c == 'L') redraw_matrix(matrix, line, column);
                 else if (c == 'z') handle_page_up(matrix, &line, column);

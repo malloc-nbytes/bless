@@ -218,18 +218,24 @@ void handle_jump_to_bottom(const Matrix *const matrix, size_t *const line, size_
     dump_matrix(matrix, *line, g_win_height, column, g_win_width);
 }
 
-// Returns the row in which the word was found.
-int find_word_in_matrix(Matrix *matrix, size_t start_row, char *word, size_t word_len, int reverse) {
+// Returns the row in which the word was found, sets the column
+// to the start of the found word.
+int find_word_in_matrix(Matrix *matrix, size_t start_row, size_t *column, char *word, size_t word_len, int reverse) {
     size_t match = 0;
     int found = 0;
+    size_t start_col = 0; // Track the starting column of the match
 
     if (!reverse) {
         for (size_t i = start_row; i < matrix->rows && !found; ++i) {
             for (size_t j = 0; j < matrix->cols && !found; ++j) {
                 if (MAT_AT(matrix->data, matrix->cols, i, j) == word[match]) {
+                    if (match == 0) {
+                        start_col = j; // Store the starting column of the match
+                    }
                     ++match;
                     if (match == word_len) {
                         found = i;
+                        *column = start_col; // Set column to the start of the match
                         break;
                     }
                 } else {
@@ -241,9 +247,13 @@ int find_word_in_matrix(Matrix *matrix, size_t start_row, char *word, size_t wor
         for (size_t i = start_row + 1; i-- > 0 && !found; ) {
             for (size_t j = 0; j < matrix->cols && !found; ++j) {
                 if (MAT_AT(matrix->data, matrix->cols, i, j) == word[match]) {
+                    if (match == 0) {
+                        start_col = j;
+                    }
                     ++match;
                     if (match == word_len) {
                         found = i;
+                        *column = start_col;
                         break;
                     }
                 } else {
@@ -256,7 +266,7 @@ int find_word_in_matrix(Matrix *matrix, size_t start_row, char *word, size_t wor
     return found ? found - 1 : 0;
 }
 
-void handle_search(Matrix *matrix, size_t *line, size_t start_row, size_t column, char *jump_to_next/*optional*/, int reverse) {
+void handle_search(Matrix *matrix, size_t *line, size_t start_row, size_t *column, char *jump_to_next/*optional*/, int reverse) {
     char *actual = NULL;
     size_t actual_len = 0;
 
@@ -272,14 +282,14 @@ void handle_search(Matrix *matrix, size_t *line, size_t start_row, size_t column
     if (actual_len == 0)
         return;
 
-    size_t found = find_word_in_matrix(matrix, start_row, actual, actual_len, reverse);
+    size_t found = find_word_in_matrix(matrix, start_row, column, actual, actual_len, reverse);
 
     if (found) {
         *line = found+1;
-        dump_matrix(matrix, *line, g_win_height, column, g_win_width);
+        dump_matrix(matrix, *line, g_win_height, *column, g_win_width);
     }
     else {
-        err_msg_wmatrix_wargs(matrix, *line, column, "[SEARCH NOT FOUND: %s]", actual);
+        err_msg_wmatrix_wargs(matrix, *line, *column, "[SEARCH NOT FOUND: %s]", actual);
         return;
     }
 
@@ -290,9 +300,9 @@ void handle_search(Matrix *matrix, size_t *line, size_t start_row, size_t column
     }
 }
 
-void jump_to_last_searched_word(Matrix *matrix, size_t *line, size_t column, int reverse) {
+void jump_to_last_searched_word(Matrix *matrix, size_t *line, size_t *column, int reverse) {
     if (!g_last_search) {
-        err_msg_wmatrix(matrix, *line, column, "[NO PREVIOUS SEARCH]");
+        err_msg_wmatrix(matrix, *line, *column, "[NO PREVIOUS SEARCH]");
         return;
     }
     if (!reverse) handle_search(matrix, line, *line+1, column, g_last_search, 0);
