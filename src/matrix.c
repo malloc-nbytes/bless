@@ -61,8 +61,9 @@ Matrix init_matrix(const char *src, char *filepath) {
             memset(buf.chars, '\0', buf.len);
             buf.len = 0;
         }
-        else
+        else {
             da_append(buf.chars, buf.len, buf.cap, char *, src[i]);
+        }
     }
 
     matrix.rows = row;
@@ -136,45 +137,60 @@ char *get_user_input_in_mini_buffer(char *prompt, char *last_input) {
     return input;
 }
 
-void dump_matrix(const Matrix *const matrix, size_t start_row, size_t end_row) {
+void dump_matrix(const Matrix *const matrix, size_t start_row, size_t end_row, size_t start_col, size_t end_col) {
     for (size_t i = start_row; i < end_row + start_row; ++i) {
         if (BIT_SET(g_flags, FLAG_TYPE_LINES) && i < matrix->rows)
-            printf("%zu: ", i+1);
-        for (size_t j = 0; j < matrix->cols; ++j) {
-            if (i >= matrix->rows)
+            printf("%zu: ", i + 1);
+
+        for (size_t j = start_col; j < end_col + start_col; ++j) {
+            if (i >= matrix->rows || j >= matrix->cols)
                 putchar(' ');
             else
                 putchar(MAT_AT(matrix->data, matrix->cols, i, j));
         }
+
         putchar('\n');
     }
 }
 
-void handle_scroll_down(const Matrix *const matrix, size_t *const line) {
+void handle_scroll_right(const Matrix *const matrix, size_t line, size_t *const column) {
+    reset_scrn();
+    dump_matrix(matrix, line, g_win_height, ++(*column), g_win_width);
+}
+
+void handle_scroll_left(const Matrix *const matrix, size_t line, size_t *const column) {
+    if (*column == 0)
+        return;
+
+    reset_scrn();
+    dump_matrix(matrix, line, g_win_height, --(*column), g_win_width);
+}
+
+void handle_scroll_down(const Matrix *const matrix, size_t *const line, size_t column) {
     // Scrolling down does not need bounds checking
     // because dump_matrix will fill out-of-bounds space
     // with empty spaces.
     reset_scrn();
-    dump_matrix(matrix, ++(*line), g_win_height);
+    dump_matrix(matrix, ++(*line), g_win_height, column, g_win_width);
 }
 
-void handle_scroll_up(const Matrix *const matrix, size_t *const line) {
+void handle_scroll_up(const Matrix *const matrix, size_t *const line, size_t column) {
     if (*line > 0) {
         reset_scrn();
-        dump_matrix(matrix, --(*line), g_win_height);
+        dump_matrix(matrix, --(*line), g_win_height, column, g_win_width);
     }
 }
 
-void handle_jump_to_top(const Matrix *const matrix, size_t *const line) {
+void handle_jump_to_top(const Matrix *const matrix, size_t *const line, size_t column) {
     reset_scrn();
     *line = 0;
-    dump_matrix(matrix, *line, g_win_height);
+    dump_matrix(matrix, *line, g_win_height, column, g_win_width);
 }
 
-void handle_jump_to_bottom(const Matrix *const matrix, size_t *const line) {
+void handle_jump_to_bottom(const Matrix *const matrix, size_t *const line, size_t column) {
     reset_scrn();
     *line = matrix->rows - g_win_height;
-    dump_matrix(matrix, *line, g_win_height);
+    dump_matrix(matrix, *line, g_win_height, column, g_win_width);
 }
 
 // Returns the row in which the word was found.
@@ -215,7 +231,7 @@ int find_word_in_matrix(Matrix *matrix, size_t start_row, char *word, size_t wor
     return found ? found - 1 : 0;
 }
 
-void handle_search(Matrix *matrix, size_t *line, size_t start_row, char *jump_to_next/*optional*/, int reverse) {
+void handle_search(Matrix *matrix, size_t *line, size_t start_row, size_t column, char *jump_to_next/*optional*/, int reverse) {
     char *actual = NULL;
     size_t actual_len = 0;
 
@@ -235,7 +251,7 @@ void handle_search(Matrix *matrix, size_t *line, size_t start_row, char *jump_to
 
     if (found) {
         *line = found+1;
-        dump_matrix(matrix, *line, g_win_height);
+        dump_matrix(matrix, *line, g_win_height, column, g_win_width);
     }
     else {
         err_msg_wmatrix_wargs(matrix, *line, "[SEARCH NOT FOUND: %s]", actual);
@@ -249,24 +265,24 @@ void handle_search(Matrix *matrix, size_t *line, size_t start_row, char *jump_to
     }
 }
 
-void jump_to_last_searched_word(Matrix *matrix, size_t *line, int reverse) {
+void jump_to_last_searched_word(Matrix *matrix, size_t *line, size_t column, int reverse) {
     if (!g_last_search) {
         err_msg_wmatrix(matrix, *line, "[NO PREVIOUS SEARCH]");
         return;
     }
-    if (!reverse) handle_search(matrix, line, *line+1, g_last_search, 0);
-    else          handle_search(matrix, line, *line-1, g_last_search, 1);
+    if (!reverse) handle_search(matrix, line, *line+1, column, g_last_search, 0);
+    else          handle_search(matrix, line, *line-1, column, g_last_search, 1);
 }
 
-void handle_page_up(Matrix *matrix, size_t *line) {
+void handle_page_up(Matrix *matrix, size_t *line, size_t column) {
     if (*line > 0) {
         if (*line < g_win_height / 2) *line = 0;
         else                          *line -= g_win_height / 2;
-        dump_matrix(matrix, *line, g_win_height);
+        dump_matrix(matrix, *line, g_win_height, column, g_win_width);
     }
 }
 
-void handle_page_down(Matrix *matrix, size_t *line) {
+void handle_page_down(Matrix *matrix, size_t *line, size_t column) {
     size_t max_start = matrix->rows > g_win_height
         ? matrix->rows - g_win_height
         : 0;
@@ -275,13 +291,13 @@ void handle_page_down(Matrix *matrix, size_t *line) {
         *line += g_win_height / 2;
         if (*line > max_start)
             *line = max_start;
-        dump_matrix(matrix, *line, g_win_height);
+        dump_matrix(matrix, *line, g_win_height, column, g_win_width);
     }
 }
 
-void redraw_matrix(Matrix *matrix, size_t line) {
+void redraw_matrix(Matrix *matrix, size_t line, size_t column) {
     reset_scrn();
-    dump_matrix(matrix, line, g_win_height);
+    dump_matrix(matrix, line, g_win_height, column, g_win_width);
 }
 
 void display_tabs(const Matrix *const matrix,
@@ -308,7 +324,7 @@ void display_tabs(const Matrix *const matrix,
 
 }
 
-void launch_editor(Matrix *matrix, size_t line) {
+void launch_editor(Matrix *matrix, size_t line, size_t column) {
     if (!strcmp(matrix->filepath, g_iu_fp) || !strcmp(matrix->filepath, g_ob_fp)) {
         err_msg_wmatrix_wargs(matrix, line, "Cannot edit buffer `%s` as it is internal", matrix->filepath);
         return;
@@ -352,5 +368,5 @@ void launch_editor(Matrix *matrix, size_t line) {
     free(matrix->data);
     *matrix = init_matrix(file_to_cstr(matrix->filepath), matrix->filepath);
     reset_scrn();
-    dump_matrix(matrix, line, g_win_height);
+    dump_matrix(matrix, line, g_win_height, column, g_win_width);
 }

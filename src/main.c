@@ -464,14 +464,15 @@ int main(int argc, char **argv) {
         if (BIT_SET(g_flags, FLAG_TYPE_ONCE)) {
             if (b_idx >= buffers.len)
                 break;
-            dump_matrix(matrix, 0, matrix->rows);
+            dump_matrix(matrix, 0, matrix->rows, 0, matrix->cols);
             ++b_idx;
             continue;
         }
 
         size_t line = buffers.last_viewed_lines[b_idx];
+        size_t column = 0;
         reset_scrn();
-        dump_matrix(matrix, line, g_win_height);
+        dump_matrix(matrix, line, g_win_height, column, g_win_width);
 
         display_tabs(matrix, paths.actual, paths.len, buffers.last_viewed_lines, line);
 
@@ -483,13 +484,13 @@ int main(int argc, char **argv) {
 
             switch (ty) {
             case USER_INPUT_TYPE_CTRL: {
-                if (c == CTRL_N)      handle_scroll_down(matrix, &line);
-                else if (c == CTRL_P) handle_scroll_up(matrix, &line);
-                else if (c == CTRL_D) handle_page_down(matrix, &line);
-                else if (c == CTRL_V) handle_page_down(matrix, &line);
-                else if (c == CTRL_U) handle_page_up(matrix, &line);
+                if (c == CTRL_N)      handle_scroll_down(matrix, &line, column);
+                else if (c == CTRL_P) handle_scroll_up(matrix, &line, column);
+                else if (c == CTRL_D) handle_page_down(matrix, &line, column);
+                else if (c == CTRL_V) handle_page_down(matrix, &line, column);
+                else if (c == CTRL_U) handle_page_up(matrix, &line, column);
                 else if (c == CTRL_W) save_buffer(matrix, line);
-                else if (c == CTRL_L) handle_page_up(matrix, &line);
+                else if (c == CTRL_L) handle_page_up(matrix, &line, column);
                 else if (c == CTRL_O) {
                     char *saved_buffer_contents = saved_buffer_contents_create();
                     Matrix open_buffer_matrix = init_matrix(saved_buffer_contents, g_ob_fp);
@@ -503,26 +504,28 @@ int main(int argc, char **argv) {
                 }
             } break;
             case USER_INPUT_TYPE_ALT: {
-                if (c == 'v') handle_page_up(matrix, &line);
+                if (c == 'v') handle_page_up(matrix, &line, column);
             } break;
             case USER_INPUT_TYPE_ARROW: {
-                if (c == UP_ARROW)        handle_scroll_up(matrix, &line);
-                else if (c == DOWN_ARROW) handle_scroll_down(matrix, &line);
-                else if (c == RIGHT_ARROW && b_idx < buffers.len-1) {
-                    buffers.last_viewed_lines[b_idx++] = line;
-                    goto switch_buffer;
-                }
-                else if (c == LEFT_ARROW && b_idx > 0) {
-                    buffers.last_viewed_lines[b_idx--] = line;
-                    goto switch_buffer;
-                }
+                if (c == UP_ARROW)        handle_scroll_up(matrix, &line, column);
+                else if (c == DOWN_ARROW) handle_scroll_down(matrix, &line, column);
+                else if (c == RIGHT_ARROW) handle_scroll_right(matrix, line, &column);
+                else if (c == LEFT_ARROW) handle_scroll_left(matrix, line, &column);
+                /* else if (c == RIGHT_ARROW && b_idx < buffers.len-1) { */
+                /*     buffers.last_viewed_lines[b_idx++] = line; */
+                /*     goto switch_buffer; */
+                /* } */
+                /* else if (c == LEFT_ARROW && b_idx > 0) { */
+                /*     buffers.last_viewed_lines[b_idx--] = line; */
+                /*     goto switch_buffer; */
+                /* } */
             } break;
             case USER_INPUT_TYPE_NORMAL: {
-                if (c == 'k')      handle_scroll_up(matrix, &line);
-                else if (c == 'j') handle_scroll_down(matrix, &line);
-                else if (c == 'g') handle_jump_to_top(matrix, &line);
-                else if (c == 'G') handle_jump_to_bottom(matrix, &line);
-                else if (c == '/') handle_search(matrix, &line, line, NULL, 0);
+                if (c == 'k')      handle_scroll_up(matrix, &line, column);
+                else if (c == 'j') handle_scroll_down(matrix, &line, column);
+                else if (c == 'g') handle_jump_to_top(matrix, &line, column);
+                else if (c == 'G') handle_jump_to_bottom(matrix, &line, column);
+                else if (c == '/') handle_search(matrix, &line, line, column, NULL, 0);
                 else if (c == ':') {
                     char *inp = get_user_input_in_mini_buffer(": ", NULL);
                     int is_open_buffer = !strcmp(matrix->filepath, g_ob_fp);
@@ -551,11 +554,11 @@ int main(int argc, char **argv) {
                         err_msg_wmatrix_wargs(matrix, line, "Not a valid special input command: `%s`", inp);
                     }
                 }
-                else if (c == 'n') jump_to_last_searched_word(matrix, &line, 0);
-                else if (c == 'N') jump_to_last_searched_word(matrix, &line, 1);
-                else if (c == 'I') launch_editor(matrix, line);
-                else if (c == 'L') redraw_matrix(matrix, line);
-                else if (c == 'z') handle_page_up(matrix, &line);
+                else if (c == 'n') jump_to_last_searched_word(matrix, &line, 0, column);
+                else if (c == 'N') jump_to_last_searched_word(matrix, &line, 1, column);
+                else if (c == 'I') launch_editor(matrix, line, column);
+                else if (c == 'L') redraw_matrix(matrix, line, column);
+                else if (c == 'z') handle_page_up(matrix, &line, column);
                 else if (c == 'O') {
                     char *new_filepath = get_user_input_in_mini_buffer("Path: ", NULL);
                     if (!new_filepath)
@@ -583,15 +586,17 @@ int main(int argc, char **argv) {
                     free(matrix->data);
                     goto end;
                 }
-                else if ((c == 'l' || c == 'K') && b_idx < buffers.len-1) {
+                else if (c == 'l') handle_scroll_right(matrix, line, &column);
+                else if (c == 'h') handle_scroll_left(matrix, line, &column);
+                else if (c == 'K' && b_idx < buffers.len-1) {
                     buffers.last_viewed_lines[b_idx++] = line;
                     goto switch_buffer;
                 }
-                else if ((c == 'h' || c == 'J') && b_idx > 0) {
+                else if (c == 'J' && b_idx > 0) {
                     buffers.last_viewed_lines[b_idx--] = line;
                     goto switch_buffer;
                 }
-                else redraw_matrix(matrix, line);
+                else redraw_matrix(matrix, line, column);
             } break;
             case USER_INPUT_TYPE_UNKNOWN: {} break;
             default: {} break;
