@@ -39,44 +39,46 @@ char *g_usage = "Bless internal usage buffer:\n\n"
     "C-n or j for scroll down\n"
     "C-p or k for scroll up\n\n"
     "Search\n"
-    "    /           Enable search mode\n"
-    "    :           Special input mode\n"
-    "    :q          Quit buffer\n"
-    "    :w          Save buffer\n"
-    "    n           Next occurrence\n"
-    "    N           Previous occurrence\n"
-    "    C-g         Cancel search\n"
+    "    /               Enable search mode\n"
+    "    :               Special input mode\n"
+    "    :q              Quit buffer\n"
+    "    :w              Save buffer\n"
+    "    n               Next occurrence\n"
+    "    N               Previous occurrence\n"
+    "    C-g             Cancel search\n"
     "Vim Keybindings:\n"
-    "    j           Scroll down\n"
-    "    k           Scroll up\n"
-    "    h           Left buffer\n"
-    "    l           Right buffer\n"
-    "    z           Put the top line in the center of the screen\n"
-    "    C-d         Page down\n"
-    "    C-u         Page up\n"
+    "    j               Scroll down\n"
+    "    k               Scroll up\n"
+    "    h               Scroll left\n"
+    "    l               Scroll right\n"
+    "    z               Put the top line in the center of the screen\n"
+    "    C-d             Page down\n"
+    "    C-u             Page up\n"
     "Emacs Keybindings\n"
-    "    C-n         Scroll down\n"
-    "    C-p         Scroll up\n"
-    "    C-l         Put the top line in the center of the screen\n"
-    "    C-v         Page down\n"
-    "    M-v         Page up\n"
+    "    C-n             Scroll down\n"
+    "    C-p             Scroll up\n"
+    "    C-l             Put the top line in the center of the screen\n"
+    "    C-v             Page down\n"
+    "    M-v             Page up\n"
     "Agnostic Keybindings\n"
-    "    ?           Open this usage buffer\n"
-    "    L           Refresh buffer\n"
-    "    O           Open file in place\n"
-    "    q           Quit buffer\n"
-    "    d           Quit buffer\n"
-    "    Q           Quit all buffers\n"
-    "    D           Quit all buffers\n"
-    "    J           Left buffer\n"
-    "    K           Right buffer\n"
-    "    C-w         Save a buffer\n"
-    "    C-o         Open a saved buffer\n"
-    "    I           Open the current line in Vim\n"
-    "    [UP]        Scroll up\n"
-    "    [DOWN]      Scroll down\n"
-    "    [LEFT]      Left buffer\n"
-    "    [RIGHT]     Right buffer\n"
+    "    ?               Open this usage buffer\n"
+    "    L               Refresh buffer\n"
+    "    O               Open file in place\n"
+    "    q               Quit buffer\n"
+    "    d               Quit buffer\n"
+    "    Q               Quit all buffers\n"
+    "    D               Quit all buffers\n"
+    "    J               Left buffer\n"
+    "    K               Right buffer\n"
+    "    C-w             Save a buffer\n"
+    "    C-o             Open a saved buffer\n"
+    "    I               Open the current line in Vim\n"
+    "    [UP]            Scroll up\n"
+    "    [DOWN]          Scroll down\n"
+    "    [LEFT]          Scroll left\n"
+    "    [RIGHT]         Scroll right\n"
+    "    [SHIFT][LEFT]   Left buffer\n"
+    "    [SHIFT][RIGHT]  Right buffer\n"
     "";
 int            g_win_width      = DEF_WIN_WIDTH;
 int            g_win_height     = DEF_WIN_HEIGHT;
@@ -275,9 +277,9 @@ void parse_config_file(char ***paths,
     fclose(file);
 }
 
-void save_buffer(Matrix *matrix, size_t line) {
+void save_buffer(Matrix *matrix, size_t line, size_t column) {
     if (!strcmp(matrix->filepath, g_ob_fp) || !strcmp(matrix->filepath, g_iu_fp)) {
-        err_msg_wmatrix_wargs(matrix, line, "Canot save buffer `%s` as it is internal", matrix->filepath);
+        err_msg_wmatrix_wargs(matrix, line, column, "Canot save buffer `%s` as it is internal", matrix->filepath);
         return;
     }
     char *name = get_user_input_in_mini_buffer("Save as: ", NULL);
@@ -327,7 +329,7 @@ char *saved_buffer_contents_create() {
     char *output = calloc(1, 1);
     size_t output_size = 0;
 
-    append_str(&output, &output_size, "\033[1;4m=== Saved Buffers ===\033[0m\n");
+    append_str(&output, &output_size, "=== Saved Buffers ===\n");
     append_str(&output, &output_size, "Use :<number> to select a buffer\n");
     append_str(&output, &output_size, "Use :r<number> (no space) to remove a bookmark\n");
     append_str(&output, &output_size, "This buffer will close upon selection\n\n");
@@ -361,12 +363,13 @@ char *saved_buffer_contents_create() {
         const size_t line = info_lines[i];
         const char *name = info_names[i];
 
-        append_str(&output, &output_size, "\033[1m%-4zu [%-*s] %-*s %-*zu\033[0m\n", i, adjusted_name_len, name, max_path_len, path, 10, line);
+        append_str(&output, &output_size, "%-4zu [%-*s] %-*s %-*zu\n", i, adjusted_name_len, name, max_path_len, path, 10, line);
 
         const char *preview = get_line_from_file_cstr(path, line);
         if (preview) {
             while (*preview && *preview == ' ') ++preview;
-            append_str(&output, &output_size, "└────── %s\n", preview);
+            //append_str(&output, &output_size, "└────── %s\n", preview);
+            append_str(&output, &output_size, "        %s\n", preview);
         } else {
             append_str(&output, &output_size, "[no preview available]\n");
         }
@@ -489,8 +492,12 @@ int main(int argc, char **argv) {
                 else if (c == CTRL_D) handle_page_down(matrix, &line, column);
                 else if (c == CTRL_V) handle_page_down(matrix, &line, column);
                 else if (c == CTRL_U) handle_page_up(matrix, &line, column);
-                else if (c == CTRL_W) save_buffer(matrix, line);
+                else if (c == CTRL_W) save_buffer(matrix, line, column);
                 else if (c == CTRL_L) handle_page_up(matrix, &line, column);
+                else if (c == CTRL_F) handle_scroll_right(matrix, line, &column);
+                else if (c == CTRL_B) handle_scroll_left(matrix, line, &column);
+                else if (c == CTRL_A) handle_jump_to_beginning_of_line(matrix, line, &column);
+                else if (c == CTRL_E) handle_jump_to_end_of_line(matrix, line, &column);
                 else if (c == CTRL_O) {
                     char *saved_buffer_contents = saved_buffer_contents_create();
                     Matrix open_buffer_matrix = init_matrix(saved_buffer_contents, g_ob_fp);
@@ -506,19 +513,21 @@ int main(int argc, char **argv) {
             case USER_INPUT_TYPE_ALT: {
                 if (c == 'v') handle_page_up(matrix, &line, column);
             } break;
+            case USER_INPUT_TYPE_SHIFT_ARROW: {
+                if (c == RIGHT_ARROW && b_idx < buffers.len-1) {
+                    buffers.last_viewed_lines[b_idx++] = line;
+                    goto switch_buffer;
+                }
+                else if (c == LEFT_ARROW && b_idx > 0) {
+                    buffers.last_viewed_lines[b_idx--] = line;
+                    goto switch_buffer;
+                }
+            } break;
             case USER_INPUT_TYPE_ARROW: {
-                if (c == UP_ARROW)        handle_scroll_up(matrix, &line, column);
-                else if (c == DOWN_ARROW) handle_scroll_down(matrix, &line, column);
+                if (c == UP_ARROW)         handle_scroll_up(matrix, &line, column);
+                else if (c == DOWN_ARROW)  handle_scroll_down(matrix, &line, column);
                 else if (c == RIGHT_ARROW) handle_scroll_right(matrix, line, &column);
-                else if (c == LEFT_ARROW) handle_scroll_left(matrix, line, &column);
-                /* else if (c == RIGHT_ARROW && b_idx < buffers.len-1) { */
-                /*     buffers.last_viewed_lines[b_idx++] = line; */
-                /*     goto switch_buffer; */
-                /* } */
-                /* else if (c == LEFT_ARROW && b_idx > 0) { */
-                /*     buffers.last_viewed_lines[b_idx--] = line; */
-                /*     goto switch_buffer; */
-                /* } */
+                else if (c == LEFT_ARROW)  handle_scroll_left(matrix, line, &column);
             } break;
             case USER_INPUT_TYPE_NORMAL: {
                 if (c == 'k')      handle_scroll_up(matrix, &line, column);
@@ -526,6 +535,8 @@ int main(int argc, char **argv) {
                 else if (c == 'g') handle_jump_to_top(matrix, &line, column);
                 else if (c == 'G') handle_jump_to_bottom(matrix, &line, column);
                 else if (c == '/') handle_search(matrix, &line, line, column, NULL, 0);
+                else if (c == '0') handle_jump_to_beginning_of_line(matrix, line, &column);
+                else if (c == '$') handle_jump_to_end_of_line(matrix, line, &column);
                 else if (c == ':') {
                     char *inp = get_user_input_in_mini_buffer(": ", NULL);
                     int is_open_buffer = !strcmp(matrix->filepath, g_ob_fp);
@@ -549,13 +560,13 @@ int main(int argc, char **argv) {
                         goto switch_buffer;
                     }
                     else if (inp[0] == 'w' && !inp[1])
-                        save_buffer(matrix, line);
+                        save_buffer(matrix, line, column);
                     else {
-                        err_msg_wmatrix_wargs(matrix, line, "Not a valid special input command: `%s`", inp);
+                        err_msg_wmatrix_wargs(matrix, line, column, "Not a valid special input command: `%s`", inp);
                     }
                 }
-                else if (c == 'n') jump_to_last_searched_word(matrix, &line, 0, column);
-                else if (c == 'N') jump_to_last_searched_word(matrix, &line, 1, column);
+                else if (c == 'n') jump_to_last_searched_word(matrix, &line, column, 0);
+                else if (c == 'N') jump_to_last_searched_word(matrix, &line, column, 1);
                 else if (c == 'I') launch_editor(matrix, line, column);
                 else if (c == 'L') redraw_matrix(matrix, line, column);
                 else if (c == 'z') handle_page_up(matrix, &line, column);

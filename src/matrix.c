@@ -2,6 +2,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <string.h>
+#include <ctype.h>
 
 #include "matrix.h"
 #include "io.h"
@@ -153,6 +154,30 @@ void dump_matrix(const Matrix *const matrix, size_t start_row, size_t end_row, s
     }
 }
 
+void handle_jump_to_beginning_of_line(Matrix *matrix, size_t line, size_t *column) {
+    *column = 0;
+    reset_scrn();
+    dump_matrix(matrix, line, g_win_height, *column, g_win_width);
+}
+
+void handle_jump_to_end_of_line(Matrix *matrix, size_t line, size_t *column) {
+    reset_scrn();
+
+    if (line >= matrix->rows) return;
+
+    size_t last_char_index = 0;
+    for (size_t col = 0; col < matrix->cols; col++) {
+        char ch = MAT_AT(matrix->data, matrix->cols, line, col);
+        if (!isspace(ch)) {
+            last_char_index = col;
+        }
+    }
+
+    *column = last_char_index;
+
+    dump_matrix(matrix, line, g_win_height, *column, g_win_width);
+}
+
 void handle_scroll_right(const Matrix *const matrix, size_t line, size_t *const column) {
     reset_scrn();
     dump_matrix(matrix, line, g_win_height, ++(*column), g_win_width);
@@ -254,7 +279,7 @@ void handle_search(Matrix *matrix, size_t *line, size_t start_row, size_t column
         dump_matrix(matrix, *line, g_win_height, column, g_win_width);
     }
     else {
-        err_msg_wmatrix_wargs(matrix, *line, "[SEARCH NOT FOUND: %s]", actual);
+        err_msg_wmatrix_wargs(matrix, *line, column, "[SEARCH NOT FOUND: %s]", actual);
         return;
     }
 
@@ -267,7 +292,7 @@ void handle_search(Matrix *matrix, size_t *line, size_t start_row, size_t column
 
 void jump_to_last_searched_word(Matrix *matrix, size_t *line, size_t column, int reverse) {
     if (!g_last_search) {
-        err_msg_wmatrix(matrix, *line, "[NO PREVIOUS SEARCH]");
+        err_msg_wmatrix(matrix, *line, column, "[NO PREVIOUS SEARCH]");
         return;
     }
     if (!reverse) handle_search(matrix, line, *line+1, column, g_last_search, 0);
@@ -326,7 +351,7 @@ void display_tabs(const Matrix *const matrix,
 
 void launch_editor(Matrix *matrix, size_t line, size_t column) {
     if (!strcmp(matrix->filepath, g_iu_fp) || !strcmp(matrix->filepath, g_ob_fp)) {
-        err_msg_wmatrix_wargs(matrix, line, "Cannot edit buffer `%s` as it is internal", matrix->filepath);
+        err_msg_wmatrix_wargs(matrix, line, column, "Cannot edit buffer `%s` as it is internal", matrix->filepath);
         return;
     }
 
