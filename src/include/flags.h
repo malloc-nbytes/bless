@@ -14,6 +14,7 @@
 #define FLAG_2HY_FILTER  "--filter"
 #define FLAG_2HY_EDITOR  "--editor"
 #define FLAG_2HY_VERSION "--version"
+#define FLAG_2HY_NO_SEARCH_COL_JUMP "--no-search-col-jump"
 
 typedef enum {
     FLAG_TYPE_HELP    = 1 << 0,
@@ -22,6 +23,7 @@ typedef enum {
     FLAG_TYPE_FILTER  = 1 << 3,
     FLAG_TYPE_EDITOR  = 1 << 4,
     FLAG_TYPE_VERSION = 1 << 5,
+    FLAG_TYPE_NO_SEARCH_COL_JUMP = 1 << 6,
 } Flag_Type;
 
 void handle_1hy_flag(const char *arg, int *argc, char ***argv);

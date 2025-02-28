@@ -21,6 +21,7 @@ void help(void) {
     printf("  %s,  -%c           Show line numbers (unimplemented)\n", FLAG_2HY_LINES, FLAG_1HY_LINES);
     printf("  %s, -%c <regex>   Filter using regex\n", FLAG_2HY_FILTER, FLAG_1HY_FILTER);
     printf("  %s, -%c <editor>  Change the default editor\n", FLAG_2HY_EDITOR, FLAG_1HY_EDITOR);
+    printf("  %s   Do not jump to the column when searching\n", FLAG_2HY_NO_SEARCH_COL_JUMP);
     printf("\nValid editors are:\n");
     for (size_t i = 0; i < g_supported_editors_len; ++i)
         printf("    %s\n", g_supported_editors[i]);
@@ -86,6 +87,8 @@ void handle_2hy_flag(const char *arg, int *argc, char ***argv) {
         g_flags |= FLAG_TYPE_VERSION;
         version();
     }
+    else if (!strcmp(arg, FLAG_2HY_NO_SEARCH_COL_JUMP))
+        g_flags |= FLAG_TYPE_NO_SEARCH_COL_JUMP;
     else
         err_wargs("Unknown option: `%s`", arg);
 }

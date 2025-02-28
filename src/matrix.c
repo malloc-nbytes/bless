@@ -232,7 +232,8 @@ int find_word_in_matrix(Matrix *matrix, size_t start_row, size_t *column, char *
                     ++match;
                     if (match == word_len) {
                         found = i;
-                        *column = start_col; // Set column to the start of the match
+                        if (!BIT_SET(g_flags, FLAG_TYPE_NO_SEARCH_COL_JUMP))
+                            *column = start_col; // Set column to the start of the match
                         break;
                     }
                 } else {
@@ -250,7 +251,8 @@ int find_word_in_matrix(Matrix *matrix, size_t start_row, size_t *column, char *
                     ++match;
                     if (match == word_len) {
                         found = i;
-                        *column = start_col;
+                        if (!BIT_SET(g_flags, FLAG_TYPE_NO_SEARCH_COL_JUMP))
+                            *column = start_col;
                         break;
                     }
                 } else {
