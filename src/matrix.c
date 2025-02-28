@@ -475,7 +475,7 @@ void display_tabs(const Matrix *const matrix,
 /* } */
 
 void launch_editor(Matrix *matrix, size_t line, size_t column) {
-    if (!strcmp(matrix->filepath, g_iu_fp) || !strcmp(matrix->filepath, g_ob_fp)) {
+    if (!strcmp(matrix->filepath, g_iu_fp) || !strcmp(matrix->filepath, g_ob_fp) || !strcmp(matrix->filepath, g_qbuf_fp)) {
         err_msg_wmatrix_wargs(matrix, line, column, "Cannot edit buffer `%s` as it is internal", matrix->filepath);
         return;
     }
