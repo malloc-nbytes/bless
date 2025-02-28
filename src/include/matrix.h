@@ -48,6 +48,7 @@ int handle_search(Matrix *matrix, size_t *line, size_t start_row, size_t *column
 int jump_to_last_searched_word(Matrix *matrix, size_t *line, size_t *column, int reverse);
 void handle_page_up(Matrix *matrix, size_t *line, size_t column);
 void handle_page_down(Matrix *matrix, size_t *line, size_t column);
+void handle_jump_to_line_num(Matrix *matrix, size_t *line, size_t column, int user_input_line);
 void handle_jump_to_beginning_of_line(Matrix *matrix, size_t line, size_t *column);
 void handle_jump_to_end_of_line(Matrix *matrix, size_t line, size_t *column);
 void redraw_matrix(Matrix *matrix, size_t line, size_t column);

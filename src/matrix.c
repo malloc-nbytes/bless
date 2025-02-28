@@ -140,9 +140,6 @@ char *get_user_input_in_mini_buffer(char *prompt, char *last_input) {
 
 void dump_matrix(const Matrix *const matrix, size_t start_row, size_t end_row, size_t start_col, size_t end_col) {
     for (size_t i = start_row; i < end_row + start_row; ++i) {
-        if (BIT_SET(g_flags, FLAG_TYPE_LINES) && i < matrix->rows)
-            printf("%zu: ", i + 1);
-
         for (size_t j = start_col; j < end_col + start_col; ++j) {
             if (i >= matrix->rows || j >= matrix->cols)
                 putchar(' ');
@@ -329,6 +326,18 @@ void handle_page_down(Matrix *matrix, size_t *line, size_t column) {
             *line = max_start;
         dump_matrix(matrix, *line, g_win_height, column, g_win_width);
     }
+}
+
+void handle_jump_to_line_num(Matrix *matrix, size_t *line, size_t column, int user_input_line) {
+    if (user_input_line <= 0 || user_input_line > matrix->rows) {
+        err_msg_wmatrix_wargs(matrix, *line, column, "[Invalid line number: `%d`]", user_input_line);
+        return;
+    }
+
+    *line = user_input_line - 1;
+
+    reset_scrn();
+    dump_matrix(matrix, *line, g_win_height, column, g_win_width);
 }
 
 void redraw_matrix(Matrix *matrix, size_t line, size_t column) {

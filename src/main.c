@@ -36,50 +36,86 @@ char *g_usage = "Bless internal usage buffer:\n\n"
 " |______  /____/\\___  >____  >____  >\n"
 "        \\/          \\/     \\/     \\/ \n\n"
     "Quick navigation:\n"
-    "C-n or j for scroll down\n"
-    "C-p or k for scroll up\n\n"
-    "Search\n"
-    "    /               Enable search mode\n"
+    "C-n or j or [DOWN] for scroll down\n"
+    "C-p or k or [UP] for scroll up\n"
+    "C-f or l or [RIGHT] for scroll right\n"
+    "C-b or h or [LEFT] for scroll left\n\n"
+
+    "Command Sequences\n"
     "    :               Special input mode\n"
+    "    :search         Enable search mode\n"
     "    :q              Quit buffer\n"
     "    :w              Save buffer\n"
-    "    n               Next occurrence\n"
-    "    N               Previous occurrence\n"
-    "    C-g             Cancel search\n"
-    "Vim Keybindings:\n"
-    "    j               Scroll down\n"
-    "    k               Scroll up\n"
+    "    :<number>       Jump to line number\n\n"
+
+    "Buffer Navigation\n"
+    "    j               Scroll Down\n"
+    "    C-n             Scroll Down\n"
+    "    [DOWN]          Scroll down\n\n"
+
+    "    k               Scroll Up\n"
+    "    C-p             Scroll Up\n"
+    "    [UP]            Scroll up\n\n"
+
     "    h               Scroll left\n"
+    "    C-b             Scroll left\n"
+    "    [LEFT]          Scroll left\n\n"
+
     "    l               Scroll right\n"
+    "    C-f             Scroll right\n"
+    "    [RIGHT]         Scroll right\n\n"
+
     "    z               Put the top line in the center of the screen\n"
+    "    C-l             Put the top line in the center of the screen\n\n"
+
     "    C-d             Page down\n"
+    "    C-v             Page down\n\n"
+
     "    C-u             Page up\n"
-    "Emacs Keybindings\n"
-    "    C-n             Scroll down\n"
-    "    C-p             Scroll up\n"
-    "    C-l             Put the top line in the center of the screen\n"
-    "    C-v             Page down\n"
-    "    C-s             Search\n"
-    "    M-v             Page up\n"
-    "Agnostic Keybindings\n"
-    "    ?               Open this usage buffer\n"
-    "    L               Refresh buffer\n"
-    "    O               Open file in place\n"
+    "    M-v             Page up\n\n"
+
+    "    g               Jump to top of page\n"
+    "    G               Jump to bottom of page\n\n"
+
+    "    $               Jump to end of line\n"
+    "    C-e             Jump to end of line\n\n"
+
+    "    0               Jump to beginning of line\n"
+    "    C-a             Jump to beginning of line\n\n"
+
+    "    /               Enable search\n"
+    "    C-s             Enable search\n\n"
+
+    "Search Mode Commands\n"
+    "    n               Next match\n\n"
+
+    "    N               Previous match\n"
+    "    p               Previous match\n\n"
+
+    "Buffer Controls\n"
     "    q               Quit buffer\n"
-    "    d               Quit buffer\n"
+    "    d               Quit buffer\n\n"
+
     "    Q               Quit all buffers\n"
-    "    D               Quit all buffers\n"
-    "    J               Left buffer\n"
-    "    K               Right buffer\n"
-    "    C-w             Save a buffer\n"
+    "    D               Quit all buffers\n\n"
+
+    "    C-w             Save buffer\n"
     "    C-o             Open a saved buffer\n"
     "    I               Open the current line in Vim\n"
-    "    [UP]            Scroll up\n"
-    "    [DOWN]          Scroll down\n"
-    "    [LEFT]          Scroll left\n"
-    "    [RIGHT]         Scroll right\n"
-    "    [SHIFT][LEFT]   Left buffer\n"
-    "    [SHIFT][RIGHT]  Right buffer\n"
+    "    L               Redraw buffer\n"
+    "    O               Open file in place\n\n"
+
+    "Tab Controls\n"
+    "    J               Left buffer\n"
+    "    [SHIFT][LEFT]   Left buffer\n\n"
+
+    "    K               Right buffer\n"
+    "    [SHIFT][RIGHT]  Right buffer\n\n"
+
+    "Misc\n"
+    "    ?               Open this usage buffer\n"
+    "    C-g             Cancel\n"
+
     "";
 int            g_win_width      = DEF_WIN_WIDTH;
 int            g_win_height     = DEF_WIN_HEIGHT;
@@ -549,13 +585,15 @@ int main(int argc, char **argv) {
                         break;
                     else if (inp && inp[0] == 'q' && !inp[1])
                         goto delete_buffer;
-                    else if (is_open_buffer && inp && isdigit(inp[0])) {
+                    else if (is_open_buffer && isdigit(inp[0])) {
                         int idx = atoi(inp);
                         Matrix selected_matrix = init_matrix(file_to_cstr(g_saved_buffers.paths[idx]), g_saved_buffers.paths[idx]);
                         buffers.matrices[buffers.len] = selected_matrix;
                         buffers.last_viewed_lines[buffers.len++] = g_saved_buffers.last_saved_lines[idx];
                         paths.actual[paths.len++] = selected_matrix.filepath;
                         goto delete_buffer;
+                    } else if (isdigit(inp[0])) {
+                        handle_jump_to_line_num(matrix, &line, column, atoi(inp));
                     } else if (is_open_buffer && inp && inp[0] == 'r') {
                         int idx = atoi(inp+1);
                         remove_entry_from_config_file(idx);
@@ -566,12 +604,14 @@ int main(int argc, char **argv) {
                     }
                     else if (inp[0] == 'w' && !inp[1])
                         save_buffer(matrix, line, column);
+                    else if (!strcmp(inp, "search"))
+                        found = handle_search(matrix, &line, line, &column, NULL, 0);
                     else {
                         err_msg_wmatrix_wargs(matrix, line, column, "Not a valid special input command: `%s`", inp);
                     }
                 }
                 else if (c == 'n') found = jump_to_last_searched_word(matrix, &line, &column, 0);
-                else if (c == 'N') found = jump_to_last_searched_word(matrix, &line, &column, 1);
+                else if (c == 'N' || c == 'p') found = jump_to_last_searched_word(matrix, &line, &column, 1);
                 else if (c == 'I') launch_editor(matrix, line, column);
                 else if (c == 'L') redraw_matrix(matrix, line, column);
                 else if (c == 'z') handle_page_up(matrix, &line, column);
@@ -620,11 +660,12 @@ int main(int argc, char **argv) {
 
             if (found) {
                 color(BOLD GREEN);
-                printf(":search [N] next [n] previous\n");
+                printf(":search ([n] next) ([N] previous)");
                 color(RESET);
                 fflush(stdout);
             }
-            display_tabs(matrix, paths.actual, paths.len, buffers.last_viewed_lines, line);
+            else
+                display_tabs(matrix, paths.actual, paths.len, buffers.last_viewed_lines, line);
         }
 
     delete_buffer:

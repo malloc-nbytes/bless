@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,7 +18,7 @@ void help(void) {
     printf("Options:\n");
     printf("  %s,   -%c           Print this message\n", FLAG_2HY_HELP, FLAG_1HY_HELP);
     printf("  %s,   -%c           Just print the files (similar to `cat`)\n", FLAG_2HY_ONCE, FLAG_1HY_ONCE);
-    printf("  %s,  -%c           Show Bless line numbers (not file line numbers, this is unimplemented)\n", FLAG_2HY_LINES, FLAG_1HY_LINES);
+    printf("  %s,  -%c           Show line numbers (unimplemented)\n", FLAG_2HY_LINES, FLAG_1HY_LINES);
     printf("  %s, -%c <regex>   Filter using regex\n", FLAG_2HY_FILTER, FLAG_1HY_FILTER);
     printf("  %s, -%c <editor>  Change the default editor\n", FLAG_2HY_EDITOR, FLAG_1HY_EDITOR);
     printf("\nValid editors are:\n");
@@ -47,7 +48,7 @@ void handle_1hy_flag(const char *arg, int *argc, char ***argv) {
         else if (*it == FLAG_1HY_ONCE)
             g_flags |= FLAG_TYPE_ONCE;
         else if (*it == FLAG_1HY_LINES)
-            g_flags |= FLAG_TYPE_LINES;
+            assert(0 && "unimplemented");
         else if (*it == FLAG_1HY_FILTER) {
             g_flags |= FLAG_TYPE_FILTER;
             handle_filter_flag(argc, argv);
@@ -72,7 +73,7 @@ void handle_2hy_flag(const char *arg, int *argc, char ***argv) {
     else if (!strcmp(arg, FLAG_2HY_ONCE))
         g_flags |= FLAG_TYPE_ONCE;
     else if (!strcmp(arg, FLAG_2HY_LINES))
-        g_flags |= FLAG_TYPE_LINES;
+            assert(0 && "unimplemented");
     else if (!strcmp(arg, FLAG_2HY_FILTER)) {
         g_flags |= FLAG_TYPE_FILTER;
         handle_filter_flag(argc, argv);
