@@ -810,7 +810,6 @@ int main(int argc, char **argv) {
 
         --paths.len;
         --buffers.len;
-        //--tab;
 
         if (b_idx >= buffers.len && buffers.len > 0)
             --b_idx;

@@ -367,7 +367,7 @@ void display_tabs(const Matrix *const matrix,
         for (size_t i = 0; i < paths_len; ++i) {
             if ((int)i == current_tab_index) {
                 color(BG_GREEN BLACK);
-                printf("%s:%zu ", paths[i], last_viewed_lines[i]);
+                printf("%s:%zu ", paths[i], line);
                 color(RESET);
             } else {
                 color(BOLD UNDERLINE);
@@ -419,7 +419,7 @@ void display_tabs(const Matrix *const matrix,
     for (size_t i = start; i < end; ++i) {
         if ((int)i == current_tab_index) {
             color(BG_GREEN BLACK);
-            printf("%s:%zu ", paths[i], last_viewed_lines[i]);
+            printf("%s:%zu ", paths[i], line);
             color(RESET);
         } else {
             color(BOLD UNDERLINE);
