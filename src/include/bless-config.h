@@ -7,6 +7,7 @@
 extern char *g_ob_fp;
 extern char *g_iu_fp;
 extern char *g_usage;
+extern char *g_qbuf_fp;
 
 extern int g_win_width;
 extern int g_win_height;

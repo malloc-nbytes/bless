@@ -28,6 +28,7 @@
 
 char *g_ob_fp = "bless-open-buffer";
 char *g_iu_fp = "bless-usage";
+char *g_qbuf_fp = "Qbuf-buffer";
 char *g_usage = "Bless internal usage buffer:\n\n"
 "__________.__                        \n"
 "\\______   \\  |   ____   ______ ______\n"
@@ -44,8 +45,10 @@ char *g_usage = "Bless internal usage buffer:\n\n"
     "Command Sequences\n"
     "    :               Special input mode\n"
     "    :search         Enable search mode\n"
+    "    :searchjmp      Jump to next search occurrence\n"
     "    :q              Quit buffer\n"
     "    :w              Save buffer\n"
+    "    :qbuf           Query open buffer names with regex\n"
     "    :<number>       Jump to line number\n\n"
 
     "Buffer Navigation\n"
@@ -101,6 +104,7 @@ char *g_usage = "Bless internal usage buffer:\n\n"
 
     "    C-w             Save buffer\n"
     "    C-o             Open a saved buffer\n"
+    "    C-q             Query open buffer names with regex\n"
     "    I               Open the current line in Vim\n"
     "    L               Redraw buffer\n"
     "    O               Open file in place\n\n"
@@ -365,7 +369,42 @@ void save_buffer(Matrix *matrix, size_t line, size_t column) {
     fclose(file);
 }
 
-char *saved_buffer_contents_create() {
+char *qbuf_buffer_create(char **paths, size_t paths_len) {
+    char *output = calloc(1, 1);
+    size_t output_size = 0;
+
+    append_str(&output, &output_size, "=== qbuf Query ===\n");
+    append_str(&output, &output_size, "Use :<number> to select a buffer to jump to\n");
+    append_str(&output, &output_size, "This buffer will not close upon selection\n\n");
+
+    char *query = get_user_input_in_mini_buffer("qbuf query (leave blank for all): ", NULL);
+    dyn_arr(size_t, idxs);
+
+    for (size_t i = 0; i < paths_len; ++i) {
+        if (regex(query, paths[i])) {
+            da_append(idxs.data, idxs.len, idxs.cap, typeof(idxs.data), i);
+        }
+    }
+
+    // Find max path length for alignment
+    size_t max_path_len = 0;
+    for (size_t i = 0; i < idxs.len; ++i) {
+        size_t path_len = strlen(paths[idxs.data[i]]);
+        if (path_len > max_path_len) max_path_len = path_len;
+    }
+
+    append_str(&output, &output_size, "%-4s %-*s\n", "Index", max_path_len, "Path");
+    append_str(&output, &output_size, "------------------------------------------------\n");
+
+    for (size_t i = 0; i < idxs.len; ++i) {
+        append_str(&output, &output_size, "%-4zu %-*s\n", idxs.data[i], max_path_len, paths[idxs.data[i]]);
+    }
+
+    free(idxs.data);
+    return output;
+}
+
+char *saved_buffer_contents_create(void) {
     char *output = calloc(1, 1);
     size_t output_size = 0;
 
@@ -515,7 +554,7 @@ int main(int argc, char **argv) {
         paths.actual[paths.len++] = g_iu_fp;
     }
 
-    int b_idx = 0, tab = 0;
+    int b_idx = 0;
     while (1) {
         Matrix *matrix = &buffers.matrices[b_idx];
 
@@ -556,6 +595,15 @@ int main(int argc, char **argv) {
                 else if (c == CTRL_A) handle_jump_to_beginning_of_line(matrix, line, &column);
                 else if (c == CTRL_E) handle_jump_to_end_of_line(matrix, line, &column);
                 else if (c == CTRL_S) status = handle_search(matrix, &line, line, &column, NULL, 0);
+                else if (c == CTRL_Q) {
+                    char *qbuf_contents = qbuf_buffer_create(paths.actual, paths.len);
+                    Matrix qbuf_matrix = init_matrix(qbuf_contents, g_qbuf_fp);
+                    buffers.matrices[buffers.len] = qbuf_matrix;
+                    buffers.last_viewed_lines[buffers.len++] = 0;
+                    b_idx = buffers.len-1;
+                    paths.actual[paths.len++] = g_ob_fp;
+                    goto switch_buffer;
+                }
                 else if (c == CTRL_O) {
                     char *saved_buffer_contents = saved_buffer_contents_create();
                     Matrix open_buffer_matrix = init_matrix(saved_buffer_contents, g_ob_fp);
@@ -564,8 +612,6 @@ int main(int argc, char **argv) {
                     buffers.last_viewed_lines[buffers.len++] = 0;
                     b_idx = buffers.len-1;
                     paths.actual[paths.len++] = g_ob_fp;
-
-                    tab = paths.len-1;
 
                     goto switch_buffer;
                 }
@@ -576,13 +622,10 @@ int main(int argc, char **argv) {
             case USER_INPUT_TYPE_SHIFT_ARROW: {
                 if (c == RIGHT_ARROW && b_idx < buffers.len-1) {
                     buffers.last_viewed_lines[b_idx++] = line;
-                    tab++;
-                    //tab = b_idx; // Move to the next page
                     goto switch_buffer;
                 }
                 else if (c == LEFT_ARROW && b_idx > 0) {
                     buffers.last_viewed_lines[b_idx--] = line;
-                    tab--;
                     goto switch_buffer;
                 }
             } break;
@@ -603,9 +646,10 @@ int main(int argc, char **argv) {
                 else if (c == ':') {
                     char *inp = get_user_input_in_mini_buffer(": ", NULL);
                     int is_open_buffer = !strcmp(matrix->filepath, g_ob_fp);
+                    int is_qbuf_buffer = !strcmp(matrix->filepath, g_qbuf_fp);
                     if (!inp)
                         break;
-                    else if (inp && inp[0] == 'q' && !inp[1])
+                    else if (inp[0] == 'q' && !inp[1])
                         goto delete_buffer;
                     else if (is_open_buffer && isdigit(inp[0])) {
                         int idx = atoi(inp);
@@ -614,9 +658,13 @@ int main(int argc, char **argv) {
                         buffers.last_viewed_lines[buffers.len++] = g_saved_buffers.last_saved_lines[idx];
                         paths.actual[paths.len++] = selected_matrix.filepath;
                         goto delete_buffer;
+                    } else if (is_qbuf_buffer && isdigit(inp[0])) {
+                        int idx = atoi(inp);
+                        b_idx = idx;
+                        goto switch_buffer;
                     } else if (isdigit(inp[0])) {
                         handle_jump_to_line_num(matrix, &line, column, atoi(inp));
-                    } else if (is_open_buffer && inp && inp[0] == 'r') {
+                    } else if (is_open_buffer && inp[0] == 'r' && inp[1]) {
                         int idx = atoi(inp+1);
                         remove_entry_from_config_file(idx);
                         free(matrix->data);
@@ -630,6 +678,15 @@ int main(int argc, char **argv) {
                         status = handle_search(matrix, &line, line, &column, NULL, 0);
                     else if (!strcmp(inp, "searchjmp"))
                         status = jump_to_last_searched_word(matrix, &line, &column, 0);
+                    else if (!strcmp(inp, "qbuf")) {
+                        char *qbuf_contents = qbuf_buffer_create(paths.actual, paths.len);
+                        Matrix qbuf_matrix = init_matrix(qbuf_contents, g_qbuf_fp);
+                        buffers.matrices[buffers.len] = qbuf_matrix;
+                        buffers.last_viewed_lines[buffers.len++] = 0;
+                        b_idx = buffers.len-1;
+                        paths.actual[paths.len++] = g_ob_fp;
+                        goto switch_buffer;
+                    }
                     else {
                         status = MATRIX_ACTION_NOT_A_VALID_CMD_SEQ;
                     }
@@ -670,12 +727,10 @@ int main(int argc, char **argv) {
                 else if (c == 'h') handle_scroll_left(matrix, line, &column);
                 else if (c == 'K' && b_idx < buffers.len-1) {
                     buffers.last_viewed_lines[b_idx++] = line;
-                    ++tab;
                     goto switch_buffer;
                 }
                 else if (c == 'J' && b_idx > 0) {
                     buffers.last_viewed_lines[b_idx--] = line;
-                    --tab;
                     goto switch_buffer;
                 }
                 else redraw_matrix(matrix, line, column);
@@ -729,8 +784,6 @@ int main(int argc, char **argv) {
 
         if (b_idx >= buffers.len && buffers.len > 0)
             --b_idx;
-
-        tab = b_idx;
 
         if (buffers.len == 0) {
             reset_scrn();

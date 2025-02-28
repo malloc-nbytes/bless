@@ -36,6 +36,15 @@
         (len)--;                                \
     } while (0)
 
+#define dyn_arr(ty, name)                               \
+    struct {                                            \
+        ty *data;                                       \
+        size_t len, cap;                                \
+    } name = {0}; {                                     \
+        (name).data = s_malloc(sizeof(ty));             \
+        (name).cap = 1, (name).len = 0;                 \
+    }
+
 #define BIT_SET(bits, bit) ((bits) & (bit)) != 0
 
 #define SAFE_PEEK(arr, i, el) ((arr)[i] && (arr)[i] == el)
