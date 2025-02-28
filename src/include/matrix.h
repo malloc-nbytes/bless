@@ -63,7 +63,7 @@ void display_tabs(const Matrix *const matrix,
                   char **paths,
                   size_t paths_len,
                   size_t *last_viewed_lines,
-                  size_t line, int *tab);
+                  size_t line, int tab);
 void launch_editor(Matrix *matrix, size_t line, size_t column);
 
 #endif // MATRIX_H

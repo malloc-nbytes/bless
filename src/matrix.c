@@ -355,13 +355,13 @@ void display_tabs(const Matrix *const matrix,
                   size_t paths_len,
                   size_t *last_viewed_lines,
                   size_t line,
-                  int *tab) {
-    const int max_chars = g_win_width - 10; // Reserve space for "[...]"
+                  int tab) {
+    const int max_chars = g_win_width - 10; // Reserve space for "..."
     int total_chars = 0;
-    int current_tab_index = *tab;
+    int current_tab_index = tab;
 
     for (size_t i = 0; i < paths_len; ++i)
-        total_chars += strlen(paths[i]) + 10; // Approximate "path:line "
+        total_chars += strlen(paths[i]); // Approximate "path:line "
 
     if (total_chars <= max_chars) {
         for (size_t i = 0; i < paths_len; ++i) {
@@ -427,8 +427,10 @@ void display_tabs(const Matrix *const matrix,
             color(RESET);
         }
     }
-    if (end < paths_len) printf(" >>>");
-    fflush(stdout);
+    if (end < paths_len) {
+        printf(" >>>");
+        fflush(stdout);
+    }
 }
 
 /* void display_tabs(const Matrix *const matrix, */

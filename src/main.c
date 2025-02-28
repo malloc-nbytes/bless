@@ -253,8 +253,10 @@ void init_term(void) {
     struct winsize w;
     if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) == 0)
         g_win_width = w.ws_col-1, g_win_height = w.ws_row-1;
-    else
+    else {
         perror("ioctl failed");
+        fprintf(stderr, "[Warning]: Could not get size of terminal. Undefined behavior may occur.");
+    }
 
     tcgetattr(STDIN_FILENO, &g_old_termios);
     struct termios raw = g_old_termios;
@@ -477,19 +479,6 @@ int main(int argc, char **argv) {
     if (paths.len >= BUFFERS_LIM)
         err_wargs("Only %d files are supported", BUFFERS_LIM);
 
-    for (size_t i = 0; i < paths.len; ++i) {
-        if (path_is_dir(paths.actual[i])) {
-            size_t files_len = 0;
-            char **files_in_dir = walkdir(paths.actual[i], &files_len);
-
-            for (size_t j = 0; j < files_len; ++j)
-                da_append(paths.actual, paths.len, paths.cap, char **, files_in_dir[j]);
-
-            // Remove directory listing.
-            da_remove(paths.actual, paths.len, i);
-        }
-    }
-
     {
         size_t i = 0;
         while (i < paths.len) {
@@ -514,8 +503,8 @@ int main(int argc, char **argv) {
                 Matrix matrix = init_matrix(src, paths.actual[i]);
                 buffers.matrices[buffers.len] = matrix;
                 buffers.last_viewed_lines[buffers.len++] = 0;
+                ++i;
             }
-            ++i;
         }
     }
 
@@ -543,7 +532,7 @@ int main(int argc, char **argv) {
         reset_scrn();
                 //                 -1 for tabs
         dump_matrix(matrix, line, g_win_height, column, g_win_width);
-        display_tabs(matrix, paths.actual, paths.len, buffers.last_viewed_lines, line, &tab);
+        display_tabs(matrix, paths.actual, paths.len, buffers.last_viewed_lines, line, b_idx);
 
         while (1) {
             char c;
@@ -575,6 +564,8 @@ int main(int argc, char **argv) {
                     buffers.last_viewed_lines[buffers.len++] = 0;
                     b_idx = buffers.len-1;
                     paths.actual[paths.len++] = g_ob_fp;
+
+                    tab = paths.len-1;
 
                     goto switch_buffer;
                 }
@@ -717,7 +708,7 @@ int main(int argc, char **argv) {
                 reset_scrn();
                 //                            -1 for tabs
                 dump_matrix(matrix, line, g_win_height, column, g_win_width);
-                display_tabs(matrix, paths.actual, paths.len, buffers.last_viewed_lines, line, &tab);
+                display_tabs(matrix, paths.actual, paths.len, buffers.last_viewed_lines, line, b_idx);
             }
         }
 
