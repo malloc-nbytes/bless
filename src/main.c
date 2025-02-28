@@ -387,6 +387,9 @@ char *qbuf_buffer_create(char **paths, size_t paths_len, size_t *one_idx) {
         }
     }
 
+    if (idxs.len == 0)
+        return NULL;
+
     if (idxs.len == 1) {
         *one_idx = idxs.data[0];
         return NULL;
@@ -600,11 +603,14 @@ int main(int argc, char **argv) {
                 else if (c == CTRL_E) handle_jump_to_end_of_line(matrix, line, &column);
                 else if (c == CTRL_S) status = handle_search(matrix, &line, line, &column, NULL, 0);
                 else if (c == CTRL_Q) {
-                    size_t one_idx = 0;
+                    size_t one_idx = SIZE_MAX;
                     char *qbuf_contents = qbuf_buffer_create(paths.actual, paths.len, &one_idx);
 
-                    if (!qbuf_contents) {
+                    if (one_idx != SIZE_MAX) {
                         b_idx = one_idx;
+                    } else if (!qbuf_contents) {
+                        status = MATRIX_ACTION_NO_QBUF_ENTRIES;
+                        break;
                     } else {
                         Matrix qbuf_matrix = init_matrix(qbuf_contents, g_qbuf_fp);
                         buffers.matrices[buffers.len] = qbuf_matrix;
@@ -689,11 +695,14 @@ int main(int argc, char **argv) {
                     else if (!strcmp(inp, "searchjmp"))
                         status = jump_to_last_searched_word(matrix, &line, &column, 0);
                     else if (!strcmp(inp, "qbuf")) {
-                        size_t one_idx = 0;
+                        size_t one_idx = SIZE_MAX;
                         char *qbuf_contents = qbuf_buffer_create(paths.actual, paths.len, &one_idx);
 
-                        if (!qbuf_contents) {
+                        if (one_idx != SIZE_MAX) {
                             b_idx = one_idx;
+                        } else if (!qbuf_contents) {
+                            status = MATRIX_ACTION_NO_QBUF_ENTRIES;
+                            break;
                         } else {
                             Matrix qbuf_matrix = init_matrix(qbuf_contents, g_qbuf_fp);
                             buffers.matrices[buffers.len] = qbuf_matrix;
@@ -768,6 +777,11 @@ int main(int argc, char **argv) {
             } else if (status == MATRIX_ACTION_SEARCH_NO_PREV) {
                 color(RED BOLD);
                 printf(":searchjmp [No previous search]");
+                fflush(stdout);
+                color(RESET);
+            } else if (status == MATRIX_ACTION_NO_QBUF_ENTRIES) {
+                color(RED BOLD);
+                printf(":qbuf [No buffers found]");
                 fflush(stdout);
                 color(RESET);
             } else if (status == MATRIX_ACTION_NOT_A_VALID_CMD_SEQ) {

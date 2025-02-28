@@ -39,6 +39,7 @@ typedef enum {
     MATRIX_ACTION_SEARCH_NOT_FOUND,
     MATRIX_ACTION_SEARCH_NO_PREV,
     MATRIX_ACTION_NOT_A_VALID_CMD_SEQ,
+    MATRIX_ACTION_NO_QBUF_ENTRIES,
 } Matrix_Action_Status;
 
 Matrix init_matrix(const char *src, char *filepath);
