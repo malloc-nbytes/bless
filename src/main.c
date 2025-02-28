@@ -369,11 +369,12 @@ void save_buffer(Matrix *matrix, size_t line, size_t column) {
     fclose(file);
 }
 
-char *qbuf_buffer_create(char **paths, size_t paths_len) {
+char *qbuf_buffer_create(char **paths, size_t paths_len, size_t *one_idx) {
     char *output = calloc(1, 1);
     size_t output_size = 0;
 
-    append_str(&output, &output_size, "=== qbuf Query ===\n");
+    append_str(&output, &output_size, "=== Qbuf Query ===\n");
+    append_str(&output, &output_size, "This buffer opens when there is more than one match.\n");
     append_str(&output, &output_size, "Use :<number> to select a buffer to jump to\n");
     append_str(&output, &output_size, "This buffer will not close upon selection\n\n");
 
@@ -384,6 +385,11 @@ char *qbuf_buffer_create(char **paths, size_t paths_len) {
         if (regex(query, paths[i])) {
             da_append(idxs.data, idxs.len, idxs.cap, typeof(idxs.data), i);
         }
+    }
+
+    if (idxs.len == 1) {
+        *one_idx = idxs.data[0];
+        return NULL;
     }
 
     // Find max path length for alignment
@@ -518,8 +524,7 @@ int main(int argc, char **argv) {
     if (paths.len >= BUFFERS_LIM)
         err_wargs("Only %d files are supported", BUFFERS_LIM);
 
-    {
-        size_t i = 0;
+    {size_t i = 0;
         while (i < paths.len) {
             if (path_is_dir(paths.actual[i])) {
                 size_t files_len = 0;
@@ -544,8 +549,7 @@ int main(int argc, char **argv) {
                 buffers.last_viewed_lines[buffers.len++] = 0;
                 ++i;
             }
-        }
-    }
+        }}
 
     if (buffers.len == 0) {
         Matrix usage_matrix = init_matrix(g_usage, g_iu_fp);
@@ -596,12 +600,18 @@ int main(int argc, char **argv) {
                 else if (c == CTRL_E) handle_jump_to_end_of_line(matrix, line, &column);
                 else if (c == CTRL_S) status = handle_search(matrix, &line, line, &column, NULL, 0);
                 else if (c == CTRL_Q) {
-                    char *qbuf_contents = qbuf_buffer_create(paths.actual, paths.len);
-                    Matrix qbuf_matrix = init_matrix(qbuf_contents, g_qbuf_fp);
-                    buffers.matrices[buffers.len] = qbuf_matrix;
-                    buffers.last_viewed_lines[buffers.len++] = 0;
-                    b_idx = buffers.len-1;
-                    paths.actual[paths.len++] = g_ob_fp;
+                    size_t one_idx = 0;
+                    char *qbuf_contents = qbuf_buffer_create(paths.actual, paths.len, &one_idx);
+
+                    if (!qbuf_contents) {
+                        b_idx = one_idx;
+                    } else {
+                        Matrix qbuf_matrix = init_matrix(qbuf_contents, g_qbuf_fp);
+                        buffers.matrices[buffers.len] = qbuf_matrix;
+                        buffers.last_viewed_lines[buffers.len++] = 0;
+                        b_idx = buffers.len-1;
+                        paths.actual[paths.len++] = g_ob_fp;
+                    }
                     goto switch_buffer;
                 }
                 else if (c == CTRL_O) {
@@ -679,12 +689,18 @@ int main(int argc, char **argv) {
                     else if (!strcmp(inp, "searchjmp"))
                         status = jump_to_last_searched_word(matrix, &line, &column, 0);
                     else if (!strcmp(inp, "qbuf")) {
-                        char *qbuf_contents = qbuf_buffer_create(paths.actual, paths.len);
-                        Matrix qbuf_matrix = init_matrix(qbuf_contents, g_qbuf_fp);
-                        buffers.matrices[buffers.len] = qbuf_matrix;
-                        buffers.last_viewed_lines[buffers.len++] = 0;
-                        b_idx = buffers.len-1;
-                        paths.actual[paths.len++] = g_ob_fp;
+                        size_t one_idx = 0;
+                        char *qbuf_contents = qbuf_buffer_create(paths.actual, paths.len, &one_idx);
+
+                        if (!qbuf_contents) {
+                            b_idx = one_idx;
+                        } else {
+                            Matrix qbuf_matrix = init_matrix(qbuf_contents, g_qbuf_fp);
+                            buffers.matrices[buffers.len] = qbuf_matrix;
+                            buffers.last_viewed_lines[buffers.len++] = 0;
+                            b_idx = buffers.len-1;
+                            paths.actual[paths.len++] = g_ob_fp;
+                        }
                         goto switch_buffer;
                     }
                     else {
