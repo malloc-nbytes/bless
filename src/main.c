@@ -478,17 +478,45 @@ int main(int argc, char **argv) {
         err_wargs("Only %d files are supported", BUFFERS_LIM);
 
     for (size_t i = 0; i < paths.len; ++i) {
-        const char *fp = paths.actual[i];
-        const char *src = file_to_cstr(fp);
+        if (path_is_dir(paths.actual[i])) {
+            size_t files_len = 0;
+            char **files_in_dir = walkdir(paths.actual[i], &files_len);
 
-        if (!src) {
-            perror("src is NULL");
-            exit(EXIT_FAILURE);
+            for (size_t j = 0; j < files_len; ++j)
+                da_append(paths.actual, paths.len, paths.cap, char **, files_in_dir[j]);
+
+            // Remove directory listing.
+            da_remove(paths.actual, paths.len, i);
         }
+    }
 
-        Matrix matrix = init_matrix(src, paths.actual[i]);
-        buffers.matrices[buffers.len] = matrix;
-        buffers.last_viewed_lines[buffers.len++] = 0;
+    {
+        size_t i = 0;
+        while (i < paths.len) {
+            if (path_is_dir(paths.actual[i])) {
+                size_t files_len = 0;
+                char **files_in_dir = walkdir(paths.actual[i], &files_len);
+
+                for (size_t j = 0; j < files_len; ++j)
+                    da_append(paths.actual, paths.len, paths.cap, char **, files_in_dir[j]);
+
+                // Remove directory listing.
+                da_remove(paths.actual, paths.len, i);
+            } else {
+                const char *fp = paths.actual[i];
+                const char *src = file_to_cstr(fp);
+
+                if (!src) {
+                    perror("src is NULL");
+                    exit(EXIT_FAILURE);
+                }
+
+                Matrix matrix = init_matrix(src, paths.actual[i]);
+                buffers.matrices[buffers.len] = matrix;
+                buffers.last_viewed_lines[buffers.len++] = 0;
+            }
+            ++i;
+        }
     }
 
     if (buffers.len == 0) {
@@ -498,7 +526,7 @@ int main(int argc, char **argv) {
         paths.actual[paths.len++] = g_iu_fp;
     }
 
-    int b_idx = 0;
+    int b_idx = 0, tab = 0;
     while (1) {
         Matrix *matrix = &buffers.matrices[b_idx];
 
@@ -513,9 +541,9 @@ int main(int argc, char **argv) {
         size_t line = buffers.last_viewed_lines[b_idx];
         size_t column = 0;
         reset_scrn();
+                //                 -1 for tabs
         dump_matrix(matrix, line, g_win_height, column, g_win_width);
-
-        display_tabs(matrix, paths.actual, paths.len, buffers.last_viewed_lines, line);
+        display_tabs(matrix, paths.actual, paths.len, buffers.last_viewed_lines, line, &tab);
 
         while (1) {
             char c;
@@ -523,7 +551,7 @@ int main(int argc, char **argv) {
 
             clear_msg();
 
-            int found = 0;
+            int status = 0;
 
             switch (ty) {
             case USER_INPUT_TYPE_CTRL: {
@@ -538,7 +566,7 @@ int main(int argc, char **argv) {
                 else if (c == CTRL_B) handle_scroll_left(matrix, line, &column);
                 else if (c == CTRL_A) handle_jump_to_beginning_of_line(matrix, line, &column);
                 else if (c == CTRL_E) handle_jump_to_end_of_line(matrix, line, &column);
-                else if (c == CTRL_S) found = handle_search(matrix, &line, line, &column, NULL, 0);
+                else if (c == CTRL_S) status = handle_search(matrix, &line, line, &column, NULL, 0);
                 else if (c == CTRL_O) {
                     char *saved_buffer_contents = saved_buffer_contents_create();
                     Matrix open_buffer_matrix = init_matrix(saved_buffer_contents, g_ob_fp);
@@ -557,10 +585,13 @@ int main(int argc, char **argv) {
             case USER_INPUT_TYPE_SHIFT_ARROW: {
                 if (c == RIGHT_ARROW && b_idx < buffers.len-1) {
                     buffers.last_viewed_lines[b_idx++] = line;
+                    tab++;
+                    //tab = b_idx; // Move to the next page
                     goto switch_buffer;
                 }
                 else if (c == LEFT_ARROW && b_idx > 0) {
                     buffers.last_viewed_lines[b_idx--] = line;
+                    tab--;
                     goto switch_buffer;
                 }
             } break;
@@ -575,7 +606,7 @@ int main(int argc, char **argv) {
                 else if (c == 'j') handle_scroll_down(matrix, &line, column);
                 else if (c == 'g') handle_jump_to_top(matrix, &line, column);
                 else if (c == 'G') handle_jump_to_bottom(matrix, &line, column);
-                else if (c == '/') found = handle_search(matrix, &line, line, &column, NULL, 0);
+                else if (c == '/') status = handle_search(matrix, &line, line, &column, NULL, 0);
                 else if (c == '0') handle_jump_to_beginning_of_line(matrix, line, &column);
                 else if (c == '$') handle_jump_to_end_of_line(matrix, line, &column);
                 else if (c == ':') {
@@ -605,13 +636,15 @@ int main(int argc, char **argv) {
                     else if (inp[0] == 'w' && !inp[1])
                         save_buffer(matrix, line, column);
                     else if (!strcmp(inp, "search"))
-                        found = handle_search(matrix, &line, line, &column, NULL, 0);
+                        status = handle_search(matrix, &line, line, &column, NULL, 0);
+                    else if (!strcmp(inp, "searchjmp"))
+                        status = jump_to_last_searched_word(matrix, &line, &column, 0);
                     else {
-                        err_msg_wmatrix_wargs(matrix, line, column, "Not a valid special input command: `%s`", inp);
+                        status = MATRIX_ACTION_NOT_A_VALID_CMD_SEQ;
                     }
                 }
-                else if (c == 'n') found = jump_to_last_searched_word(matrix, &line, &column, 0);
-                else if (c == 'N' || c == 'p') found = jump_to_last_searched_word(matrix, &line, &column, 1);
+                else if (c == 'n') status = jump_to_last_searched_word(matrix, &line, &column, 0);
+                else if (c == 'N' || c == 'p') status = jump_to_last_searched_word(matrix, &line, &column, 1);
                 else if (c == 'I') launch_editor(matrix, line, column);
                 else if (c == 'L') redraw_matrix(matrix, line, column);
                 else if (c == 'z') handle_page_up(matrix, &line, column);
@@ -646,10 +679,12 @@ int main(int argc, char **argv) {
                 else if (c == 'h') handle_scroll_left(matrix, line, &column);
                 else if (c == 'K' && b_idx < buffers.len-1) {
                     buffers.last_viewed_lines[b_idx++] = line;
+                    ++tab;
                     goto switch_buffer;
                 }
                 else if (c == 'J' && b_idx > 0) {
                     buffers.last_viewed_lines[b_idx--] = line;
+                    --tab;
                     goto switch_buffer;
                 }
                 else redraw_matrix(matrix, line, column);
@@ -658,14 +693,32 @@ int main(int argc, char **argv) {
             default: {} break;
             }
 
-            if (found) {
+            if (status == MATRIX_ACTION_SEARCH_FOUND) {
                 color(BOLD GREEN);
                 printf(":search ([n] next) ([N] previous)");
                 color(RESET);
                 fflush(stdout);
+            } else if (status == MATRIX_ACTION_SEARCH_NOT_FOUND) {
+                color(RED BOLD);
+                printf(":search [Search not found]");
+                fflush(stdout);
+                color(RESET);
+            } else if (status == MATRIX_ACTION_SEARCH_NO_PREV) {
+                color(RED BOLD);
+                printf(":searchjmp [No previous search]");
+                fflush(stdout);
+                color(RESET);
+            } else if (status == MATRIX_ACTION_NOT_A_VALID_CMD_SEQ) {
+                color(RED BOLD);
+                printf("[Not a command sequence]");
+                fflush(stdout);
+                color(RESET);
+            } else {
+                reset_scrn();
+                //                            -1 for tabs
+                dump_matrix(matrix, line, g_win_height, column, g_win_width);
+                display_tabs(matrix, paths.actual, paths.len, buffers.last_viewed_lines, line, &tab);
             }
-            else
-                display_tabs(matrix, paths.actual, paths.len, buffers.last_viewed_lines, line);
         }
 
     delete_buffer:
@@ -681,9 +734,12 @@ int main(int argc, char **argv) {
 
         --paths.len;
         --buffers.len;
+        //--tab;
 
         if (b_idx >= buffers.len && buffers.len > 0)
             --b_idx;
+
+        tab = b_idx;
 
         if (buffers.len == 0) {
             reset_scrn();

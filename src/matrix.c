@@ -265,7 +265,7 @@ int find_word_in_matrix(Matrix *matrix, size_t start_row, size_t *column, char *
     return found ? found - 1 : 0;
 }
 
-int handle_search(Matrix *matrix, size_t *line, size_t start_row, size_t *column, char *jump_to_next/*optional*/, int reverse) {
+Matrix_Action_Status handle_search(Matrix *matrix, size_t *line, size_t start_row, size_t *column, char *jump_to_next/*optional*/, int reverse) {
     char *actual = NULL;
     size_t actual_len = 0;
 
@@ -274,11 +274,11 @@ int handle_search(Matrix *matrix, size_t *line, size_t start_row, size_t *column
     else
         actual = jump_to_next;
 
-    if (!actual) return 0;
+    if (!actual) return MATRIX_ACTION_SEARCH_NOT_FOUND;
 
     actual_len = strlen(actual);
 
-    if (actual_len == 0) return 0;
+    if (actual_len == 0) return MATRIX_ACTION_SEARCH_NOT_FOUND;
 
     size_t found = find_word_in_matrix(matrix, start_row, column, actual, actual_len, reverse);
 
@@ -287,8 +287,9 @@ int handle_search(Matrix *matrix, size_t *line, size_t start_row, size_t *column
         dump_matrix(matrix, *line, g_win_height, *column, g_win_width);
     }
     else {
-        err_msg_wmatrix_wargs(matrix, *line, *column, "[SEARCH NOT FOUND: %s]", actual);
-        return 0;
+        //err_msg_wmatrix_wargs(matrix, *line, *column, "[SEARCH NOT FOUND: %s]", actual);
+        //return 0;
+        return MATRIX_ACTION_SEARCH_NOT_FOUND;
     }
 
     if (!jump_to_next) {
@@ -297,13 +298,15 @@ int handle_search(Matrix *matrix, size_t *line, size_t start_row, size_t *column
         g_last_search = actual;
     }
 
-    return 1;
+    //return 1;
+    return MATRIX_ACTION_SEARCH_FOUND;
 }
 
-int jump_to_last_searched_word(Matrix *matrix, size_t *line, size_t *column, int reverse) {
+Matrix_Action_Status jump_to_last_searched_word(Matrix *matrix, size_t *line, size_t *column, int reverse) {
     if (!g_last_search) {
-        err_msg_wmatrix(matrix, *line, *column, "[NO PREVIOUS SEARCH]");
-        return 0;
+        //err_msg_wmatrix(matrix, *line, *column, "[NO PREVIOUS SEARCH]");
+        //return 0;
+        return MATRIX_ACTION_SEARCH_NO_PREV;
     }
     if (!reverse) return handle_search(matrix, line, *line+1, column, g_last_search, 0);
     return handle_search(matrix, line, *line-1, column, g_last_search, 1);
@@ -351,25 +354,123 @@ void display_tabs(const Matrix *const matrix,
                   char **paths,
                   size_t paths_len,
                   size_t *last_viewed_lines,
-                  size_t line) {
-    color(BOLD UNDERLINE);
-    printf("[");
-    for (size_t i = 0; i < paths_len; ++i) {
-        if (!strcmp(paths[i], matrix->filepath)) {
-            color(BG_GREEN BLACK);
-            printf(" %s:%zu ", paths[i], line);
-            color(RESET);
+                  size_t line,
+                  int *tab) {
+    const int max_chars = g_win_width - 10; // Reserve space for "[...]"
+    int total_chars = 0;
+    int current_tab_index = *tab;
+
+    for (size_t i = 0; i < paths_len; ++i)
+        total_chars += strlen(paths[i]) + 10; // Approximate "path:line "
+
+    if (total_chars <= max_chars) {
+        for (size_t i = 0; i < paths_len; ++i) {
+            if ((int)i == current_tab_index) {
+                color(BG_GREEN BLACK);
+                printf("%s:%zu ", paths[i], last_viewed_lines[i]);
+                color(RESET);
+            } else {
+                color(BOLD UNDERLINE);
+                printf("%s:%zu ", paths[i], last_viewed_lines[i]);
+                color(RESET);
+            }
         }
-        else {
-            color(RESET BOLD UNDERLINE);
-            printf(" %s:%zu ", paths[i], last_viewed_lines[i]);
+        return;
+    }
+
+    int chars_used = 0;
+    int start = 0, end = paths_len;
+    int found_current = 0;
+
+    while (start < paths_len) {
+        chars_used = 0;
+        found_current = 0;
+        for (size_t i = start; i < paths_len; ++i) {
+            int tab_size = strlen(paths[i]) + 10;
+            if (chars_used + tab_size > max_chars) {
+                end = i;
+                break;
+            }
+            chars_used += tab_size;
+            if ((int)i == current_tab_index) found_current = 1;
+        }
+
+        // If the current tab is not in the displayed range, move the window forward
+        if (found_current || end == paths_len) break;
+        start++;
+    }
+
+    // Ensure the last tab is always rendered if selected
+    if (current_tab_index >= end) {
+        start = current_tab_index;
+        chars_used = 0;
+        for (size_t i = start; i < paths_len; ++i) {
+            int tab_size = strlen(paths[i]) + 10;
+            if (chars_used + tab_size > max_chars) break;
+            chars_used += tab_size;
+            end = i + 1;
         }
     }
-    printf("]");
-    color(RESET);
-    fflush(stdout);
 
+    if (start > 0) {
+        printf("<<< ");
+        fflush(stdout);
+    }
+    for (size_t i = start; i < end; ++i) {
+        if ((int)i == current_tab_index) {
+            color(BG_GREEN BLACK);
+            printf("%s:%zu ", paths[i], last_viewed_lines[i]);
+            color(RESET);
+        } else {
+            color(BOLD UNDERLINE);
+            printf("%s:%zu ", paths[i], last_viewed_lines[i]);
+            color(RESET);
+        }
+    }
+    if (end < paths_len) printf(" >>>");
+    fflush(stdout);
 }
+
+/* void display_tabs(const Matrix *const matrix, */
+/*                   char **paths, */
+/*                   size_t paths_len, */
+/*                   size_t *last_viewed_lines, */
+/*                   size_t line, */
+/*                   int *tab, int *isdir) { */
+/*     color(BOLD UNDERLINE); */
+/*     printf("["); */
+/*     int acc = 0, past_limit = 0, already_found = 0; */
+/*     for (size_t i = *tab; i < paths_len; ++i) { */
+/*         if (acc >= g_win_width/2) { */
+/*             if (past_limit || already_found) { */
+/*                 printf("...%d more", paths_len-i); */
+/*                 break; */
+/*             } */
+/*             past_limit = 1; */
+/*             acc = 0; */
+/*         } */
+/*         if (!strcmp(paths[i], matrix->filepath)) { */
+/*             already_found = 1; */
+
+/*             if (past_limit) { */
+/*                 clear_msg(); */
+/*                 //\*tab += i; */
+/*             } */
+
+/*             color(BG_GREEN BLACK); */
+/*             printf(" %s:%zu ", paths[i], line); */
+/*             color(RESET); */
+/*         } */
+/*         else { */
+/*             color(RESET BOLD UNDERLINE); */
+/*             printf(" %s:%zu ", paths[i], last_viewed_lines[i]); */
+/*         } */
+/*         acc += strlen(paths[i]); */
+/*     } */
+/*     printf("]"); */
+/*     color(RESET); */
+/*     fflush(stdout); */
+/* } */
 
 void launch_editor(Matrix *matrix, size_t line, size_t column) {
     if (!strcmp(matrix->filepath, g_iu_fp) || !strcmp(matrix->filepath, g_ob_fp)) {

@@ -34,6 +34,13 @@ typedef struct {
         color(RESET);                                   \
     } while (0)
 
+typedef enum {
+    MATRIX_ACTION_SEARCH_FOUND = 1,
+    MATRIX_ACTION_SEARCH_NOT_FOUND,
+    MATRIX_ACTION_SEARCH_NO_PREV,
+    MATRIX_ACTION_NOT_A_VALID_CMD_SEQ,
+} Matrix_Action_Status;
+
 Matrix init_matrix(const char *src, char *filepath);
 char *get_user_input_in_mini_buffer(char *prompt, char *last_input);
 void dump_matrix(const Matrix *const matrix, size_t start_row, size_t end_row, size_t start_col, size_t end_col);
@@ -44,8 +51,8 @@ void handle_scroll_up(const Matrix *const matrix, size_t *const line, size_t col
 void handle_jump_to_top(const Matrix *const matrix, size_t *const line, size_t column);
 void handle_jump_to_bottom(const Matrix *const matrix, size_t *const line, size_t column);
 int find_word_in_matrix(Matrix *matrix, size_t start_row, size_t *column, char *word, size_t word_len, int reverse);
-int handle_search(Matrix *matrix, size_t *line, size_t start_row, size_t *column, char *jump_to_next/*optional*/, int reverse);
-int jump_to_last_searched_word(Matrix *matrix, size_t *line, size_t *column, int reverse);
+Matrix_Action_Status handle_search(Matrix *matrix, size_t *line, size_t start_row, size_t *column, char *jump_to_next/*optional*/, int reverse);
+Matrix_Action_Status jump_to_last_searched_word(Matrix *matrix, size_t *line, size_t *column, int reverse);
 void handle_page_up(Matrix *matrix, size_t *line, size_t column);
 void handle_page_down(Matrix *matrix, size_t *line, size_t column);
 void handle_jump_to_line_num(Matrix *matrix, size_t *line, size_t column, int user_input_line);
@@ -56,7 +63,7 @@ void display_tabs(const Matrix *const matrix,
                   char **paths,
                   size_t paths_len,
                   size_t *last_viewed_lines,
-                  size_t line);
+                  size_t line, int *tab);
 void launch_editor(Matrix *matrix, size_t line, size_t column);
 
 #endif // MATRIX_H

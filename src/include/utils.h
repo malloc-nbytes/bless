@@ -26,6 +26,16 @@
         (len) += 1;                                               \
     } while (0)
 
+#define da_remove(arr, len, idx)                \
+    do {                                        \
+        if ((idx) < (len) - 1) {                \
+            memmove(&(arr)[(idx)],              \
+                    &(arr)[(idx) + 1],          \
+                    ((len) - (idx) - 1) * sizeof((arr)[0])); \
+        }                                       \
+        (len)--;                                \
+    } while (0)
+
 #define BIT_SET(bits, bit) ((bits) & (bit)) != 0
 
 #define SAFE_PEEK(arr, i, el) ((arr)[i] && (arr)[i] == el)
