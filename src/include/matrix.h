@@ -4,12 +4,25 @@
 #include <stddef.h>
 
 #include "color.h"
+#include "dyn_array.h"
+
+#define CMD_SEQ_SEARCH "search"
+#define CMD_SEQ_SEARCHJMP "searchjmp"
+#define CMD_SEQ_QBUF "qbuf"
 
 typedef struct {
     char *data;
     size_t rows, cols;
     char *filepath;
 } Matrix;
+
+typedef struct {
+    Matrix m;
+    size_t lvl; // last viewed line
+    const char *path;
+} Buffer;
+
+dyn_array_type(Buffer, Buffer_Array);
 
 #define MAT_AT(m, c, i, j) \
     ((m)[(i) * (c) + (j)])
@@ -60,11 +73,10 @@ void handle_jump_to_line_num(Matrix *matrix, size_t *line, size_t column, int us
 void handle_jump_to_beginning_of_line(Matrix *matrix, size_t line, size_t *column);
 void handle_jump_to_end_of_line(Matrix *matrix, size_t line, size_t *column);
 void redraw_matrix(Matrix *matrix, size_t line, size_t column);
-void display_tabs(const Matrix *const matrix,
-                  char **paths,
-                  size_t paths_len,
-                  size_t *last_viewed_lines,
-                  size_t line, int tab);
+void display_tabs(Buffer_Array *buffers,
+                  const Matrix *const matrix,
+                  size_t line,
+                  int tab);
 void launch_editor(Matrix *matrix, size_t line, size_t column);
 
 #endif // MATRIX_H
