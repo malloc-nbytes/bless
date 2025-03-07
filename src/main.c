@@ -703,7 +703,7 @@ int main(int argc, char **argv) {
                         int idx = atoi(inp+1);
                         remove_entry_from_config_file(idx);
                         free(matrix->data);
-                        delete_buffer(&buffers, &b_idx);
+                        //delete_buffer(&buffers, &b_idx);
                         char *saved_buffer_contents = saved_buffer_contents_create();
                         *matrix = init_matrix(saved_buffer_contents, g_ob_fp);
                     }
