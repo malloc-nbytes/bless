@@ -22,6 +22,9 @@
 #include "utils.h"
 #include "bless-config.h"
 
+// TODO:
+//   1. Random segfaults when quiting a document.
+
 #define DEF_WIN_WIDTH 80
 #define DEF_WIN_HEIGHT 24
 
