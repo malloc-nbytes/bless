@@ -583,6 +583,11 @@ int main(int argc, char **argv) {
 
     int b_idx = 0;
     while (1) {
+        if (buffers.len == 0) {
+            reset_scrn();
+            goto end;
+        }
+
         Buffer *buffer = &buffers.data[b_idx];
         Matrix *matrix = &buffer->m;
 
@@ -811,10 +816,10 @@ int main(int argc, char **argv) {
                 dump_matrix(matrix, line, g_win_height, column, g_win_width);
                 display_tabs(&buffers, matrix, line, b_idx);
             }
-        }
 
-    switch_buffer:
-        (void)0x0;
+        }
+        switch_buffer:
+            (void)0x0;
     }
 
  end:
