@@ -11,9 +11,31 @@
 #include "utils.h"
 #include "flags.h"
 
+// Helper function to check if a character sequence starting at src[i] is valid UTF-8
+// Returns the number of bytes in the UTF-8 sequence (1-4), or 0 if invalid
+static size_t is_valid_utf8(const char *src, size_t i, size_t len) {
+    unsigned char c = src[i];
+    
+    // Single-byte ASCII (0xxxxxxx)
+    if (c <= 0x7F) return 1;
+    
+    // Multi-byte sequences
+    if (c >= 0xC2 && c <= 0xDF && i + 1 < len) { // 2-byte sequence
+        if ((src[i + 1] & 0xC0) == 0x80) return 2;
+    } else if (c >= 0xE0 && c <= 0xEF && i + 2 < len) { // 3-byte sequence
+        if ((src[i + 1] & 0xC0) == 0x80 && (src[i + 2] & 0xC0) == 0x80) return 3;
+    } else if (c >= 0xF0 && c <= 0xF4 && i + 3 < len) { // 4-byte sequence
+        if ((src[i + 1] & 0xC0) == 0x80 && (src[i + 2] & 0xC0) == 0x80 && 
+            (src[i + 3] & 0xC0) == 0x80) return 4;
+    }
+    
+    return 0; // Invalid UTF-8
+}
+
 Matrix init_matrix(const char *src, char *filepath) {
     size_t rows = 1, cols = 0, current_cols = 0;
 
+    // Count rows and columns
     for (size_t i = 0; src[i]; ++i) {
         if (src[i] == '\n') {
             rows++;
@@ -45,13 +67,14 @@ Matrix init_matrix(const char *src, char *filepath) {
     struct {
         char *chars;
         size_t len, cap;
-    } buf = {0}; {
+    } buf = {0};
+    {
         buf.chars = (char *)s_malloc(80);
         buf.cap = 80, buf.len = 0;
         memset(buf.chars, '\0', buf.cap);
     }
 
-    for (size_t i = 0; src[i]; ++i) {
+    for (size_t i = 0; src[i];) {
         if (src[i] == '\n') {
             if (g_filter_pattern && !regex(g_filter_pattern, buf.chars))
                 goto not_match;
@@ -61,11 +84,37 @@ Matrix init_matrix(const char *src, char *filepath) {
         not_match:
             memset(buf.chars, '\0', buf.len);
             buf.len = 0;
-        }
-        else {
-            da_append(buf.chars, buf.len, buf.cap, char *, src[i]);
+            ++i; // Move past newline
+        } else {
+            // Check if the current character is valid UTF-8
+            size_t utf8_len = is_valid_utf8(src, i, strlen(src));
+            if (utf8_len == 0 || utf8_len > 1) { // Invalid UTF-8 or non-ASCII (multi-byte)
+                da_append(buf.chars, buf.len, buf.cap, char *, '?');
+                i += (utf8_len == 0) ? 1 : utf8_len; // Skip invalid byte or multi-byte sequence
+            } else {
+                // Valid ASCII (single-byte, <= 0x7F)
+                if (src[i] == '\t') {
+                        da_append(buf.chars, buf.len, buf.cap, char *, ' ');
+                        da_append(buf.chars, buf.len, buf.cap, char *, ' ');
+                        da_append(buf.chars, buf.len, buf.cap, char *, ' ');
+                        da_append(buf.chars, buf.len, buf.cap, char *, ' ');
+                } else {
+                        da_append(buf.chars, buf.len, buf.cap, char *, src[i]);
+                }
+                i += 1; // Move past single byte
+            }
         }
     }
+
+    // Handle the last line if it doesn't end with a newline
+    if (buf.len > 0) {
+        if (g_filter_pattern && !regex(g_filter_pattern, buf.chars))
+            goto skip_last_line;
+        for (size_t j = 0; j < buf.len; ++j)
+            matrix.data[row * cols + j] = buf.chars[j];
+        row++;
+    }
+skip_last_line:
 
     matrix.rows = row;
 
