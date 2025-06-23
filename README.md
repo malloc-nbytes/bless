@@ -1,5 +1,7 @@
 # bless
 
+*Note:* This package can be installed through =forge= [ https://github.com/malloc-nbytes/forge ].
+
 ## Introduction
 
 "Better" `less` is a part of the series that I am doing to rewrite
